@@ -12,7 +12,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPExceptio
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from game import Game
+from server.game import Game
 
 # ============= 房间状态（单房间，全局变量即可） =============
 class Room:
