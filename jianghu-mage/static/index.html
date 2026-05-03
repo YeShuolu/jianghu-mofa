@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>江湖魔法师 · 联机版</title>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&family=Long+Cang&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment: #f4e4bc;
+    --parchment-dark: #d4b896;
+    --parchment-shadow: #8b6f47;
+    --ink: #3d2817;
+    --ink-light: #6b4423;
+    --blood: #a02828;
+    --blood-bright: #d63838;
+    --gold: #c9a961;
+    --gold-bright: #e8c878;
+    --magic-purple: #6b3a8a;
+    --magic-green: #3d7a4a;
+    --shadow: rgba(61, 40, 23, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Ma Shan Zheng', 'ZCOOL KuaiLe', serif;
+    background: radial-gradient(ellipse at top, #4a3520 0%, #2a1810 70%, #1a0f08 100%);
+    min-height: 100vh;
+    color: var(--ink);
+    overflow-x: hidden;
+    padding: 16px;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(201, 169, 97, 0.08) 0%, transparent 1%),
+      radial-gradient(circle at 70% 60%, rgba(201, 169, 97, 0.06) 0%, transparent 1%),
+      radial-gradient(circle at 40% 80%, rgba(201, 169, 97, 0.07) 0%, transparent 1%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+  .game-title { text-align: center; margin-bottom: 20px; }
+  .game-title h1 {
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: clamp(28px, 4vw, 44px);
+    color: var(--gold-bright);
+    text-shadow: 2px 2px 0 #000, 0 0 20px rgba(232, 200, 120, 0.5);
+    letter-spacing: 8px;
+  }
+  .game-title .subtitle {
+    color: var(--parchment-dark);
+    font-size: 14px;
+    margin-top: 4px;
+    letter-spacing: 4px;
+    opacity: 0.7;
+  }
+
+  /* ============ Lobby ============ */
+  .lobby {
+    background: radial-gradient(ellipse at center, rgba(244, 228, 188, 0.95) 0%, rgba(212, 184, 150, 0.95) 70%);
+    border: 4px solid var(--parchment-shadow);
+    border-radius: 16px;
+    padding: 36px;
+    box-shadow: 0 0 0 2px var(--gold), 0 20px 60px rgba(0,0,0,0.7);
+    text-align: center;
+  }
+  .lobby h2 {
+    font-size: 28px;
+    color: var(--ink);
+    margin-bottom: 12px;
+    letter-spacing: 4px;
+  }
+  .lobby .hint {
+    color: var(--ink-light);
+    font-size: 16px;
+    margin-bottom: 24px;
+    line-height: 1.7;
+  }
+  .seat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    max-width: 720px;
+    margin: 0 auto 28px;
+  }
+  .seat-card {
+    background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 2px solid var(--parchment-shadow);
+    border-radius: 12px;
+    padding: 18px 12px;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .seat-card.taken {
+    background: linear-gradient(135deg, #f4d4a8 0%, #c9a378 100%);
+    border-color: var(--blood);
+  }
+  .seat-card.you {
+    border-color: var(--gold-bright);
+    border-width: 3px;
+    box-shadow: 0 0 16px rgba(232, 200, 120, 0.6);
+  }
+  .seat-card .seat-num {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .seat-card .seat-status {
+    font-size: 13px;
+    color: var(--ink-light);
+    min-height: 18px;
+  }
+  .seat-card .you-tag {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--gold-bright);
+    color: var(--ink);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--ink);
+  }
+  .seat-card .offline-tag {
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(160, 40, 40, 0.85);
+    color: var(--parchment);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 6px;
+  }
+  .lobby-actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .lobby-btn {
+    background: var(--blood);
+    color: var(--parchment);
+    border: 2px solid var(--ink);
+    padding: 12px 28px;
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 4px;
+    box-shadow: 0 4px 0 #6b1818;
+    transition: all 0.15s;
+  }
+  .lobby-btn.secondary {
+    background: var(--ink);
+    box-shadow: 0 4px 0 #1a0e08;
+  }
+  .lobby-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 0 #6b1818; }
+  .lobby-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 #6b1818; }
+  .lobby-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .invite-box {
+    background: rgba(61, 40, 23, 0.08);
+    border: 1px dashed var(--parchment-shadow);
+    border-radius: 8px;
+    padding: 14px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--ink-light);
+  }
+  .invite-box strong { color: var(--ink); }
+  .invite-link {
+    background: var(--parchment);
+    border: 1px solid var(--parchment-shadow);
+    padding: 6px 12px;
+    border-radius: 6px;
+    display: inline-block;
+    margin: 6px 4px 0;
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--magic-purple);
+    cursor: pointer;
+    word-break: break-all;
+    user-select: all;
+  }
+  .invite-link:hover { background: var(--parchment-dark); }
+
+  /* ============ Game (复用之前布局) ============ */
+  .table {
+    background: radial-gradient(ellipse at center, rgba(244, 228, 188, 0.95) 0%, rgba(212, 184, 150, 0.95) 70%, rgba(139, 111, 71, 0.95) 100%);
+    border: 4px solid var(--parchment-shadow);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 0 0 2px var(--gold), 0 20px 60px rgba(0,0,0,0.7), inset 0 0 60px rgba(139, 111, 71, 0.3);
+    position: relative;
+    min-height: 640px;
+  }
+  .table::before, .table::after {
+    content: '◈';
+    position: absolute;
+    color: var(--gold);
+    font-size: 24px;
+    text-shadow: 0 0 10px rgba(232, 200, 120, 0.6);
+  }
+  .table::before { top: 8px; left: 12px; }
+  .table::after { bottom: 8px; right: 12px; }
+
+  .top-players {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .top-players.cols-1 { grid-template-columns: 1fr; }
+  .top-players.cols-2 { grid-template-columns: 1fr 1fr; }
+  .top-players.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .top-players.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .top-players.cols-5 { grid-template-columns: repeat(5, 1fr); }
+
+  .player-zone {
+    background: rgba(244, 228, 188, 0.4);
+    border: 2px dashed var(--parchment-shadow);
+    border-radius: 12px;
+    padding: 12px;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .player-zone.active {
+    background: rgba(232, 200, 120, 0.5);
+    border-color: var(--blood);
+    border-style: solid;
+    box-shadow: 0 0 30px rgba(214, 56, 56, 0.4), inset 0 0 20px rgba(214, 56, 56, 0.1);
+  }
+  .player-zone.eliminated { opacity: 0.4; filter: grayscale(0.8); }
+  .player-zone.eliminated::after {
+    content: '已出局';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    font-size: 28px;
+    color: var(--blood);
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  }
+  .player-zone.offline {
+    border-style: dotted;
+    border-color: var(--blood);
+  }
+  .player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .player-name { font-size: 16px; color: var(--ink); font-weight: bold; }
+  .player-name .seat {
+    font-size: 11px;
+    background: var(--ink);
+    color: var(--parchment);
+    padding: 2px 8px;
+    border-radius: 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .player-name .offline-badge {
+    background: var(--blood);
+    color: var(--parchment);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    margin-left: 4px;
+  }
+  .hp-display { display: flex; gap: 2px; align-items: center; }
+  .heart { width: 18px; height: 18px; position: relative; }
+  .heart.full { color: var(--blood-bright); filter: drop-shadow(0 0 3px rgba(214, 56, 56, 0.6)); }
+  .heart.empty { color: rgba(61, 40, 23, 0.25); }
+  .heart::before {
+    content: '♥';
+    font-size: 20px;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .hand {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 80px;
+  }
+
+  .card {
+    width: 56px; height: 80px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f4e4bc 0%, #e0c896 100%);
+    border: 2px solid var(--parchment-shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 2px 2px 6px var(--shadow), inset 0 1px 0 rgba(255,255,255,0.5);
+    position: relative;
+    transition: transform 0.2s;
+  }
+  .card.peeked {
+    box-shadow: 2px 2px 6px var(--shadow), 0 0 12px rgba(232, 200, 120, 0.8);
+    border-color: var(--gold-bright);
+  }
+  .card.peeked::after {
+    content: '👁';
+    position: absolute;
+    top: -8px; right: -8px;
+    font-size: 12px;
+    background: var(--gold-bright);
+    border-radius: 50%;
+    width: 20px; height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .card-number {
+    font-size: 30px;
+    color: var(--ink);
+    font-family: 'Ma Shan Zheng', serif;
+    font-weight: bold;
+    line-height: 1;
+  }
+  .card-name {
+    font-size: 9px;
+    color: var(--ink-light);
+    margin-top: 3px;
+    letter-spacing: 1px;
+  }
+  .card-icon { font-size: 16px; margin-bottom: 2px; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, #6b3a8a, #6b3a8a 4px, #5a2f75 4px, #5a2f75 8px), var(--magic-purple);
+    border-color: var(--gold);
+  }
+  .card.back::before {
+    content: '魔';
+    font-size: 26px;
+    color: var(--gold-bright);
+    text-shadow: 0 0 8px rgba(232, 200, 120, 0.8);
+    font-family: 'Ma Shan Zheng', serif;
+  }
+  .card.back .card-number, .card.back .card-name, .card.back .card-icon { display: none; }
+
+  .middle-area {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+    align-items: start;
+  }
+  .side-info { display: flex; flex-direction: column; }
+  .right-info .log { width: 100%; }
+
+  .deck-area {
+    background: rgba(61, 40, 23, 0.1);
+    border: 2px solid var(--parchment-shadow);
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .deck-stack {
+    width: 60px; height: 86px;
+    background: repeating-linear-gradient(45deg, #6b3a8a, #6b3a8a 4px, #5a2f75 4px, #5a2f75 8px), var(--magic-purple);
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    box-shadow: 3px 3px 0 var(--parchment-shadow), 6px 6px 0 var(--parchment-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold-bright);
+    font-size: 26px;
+    font-family: 'Ma Shan Zheng', serif;
+  }
+  .deck-count { font-size: 14px; color: var(--ink); }
+  .deck-count strong { font-size: 20px; color: var(--blood); }
+
+  .discard-pile {
+    background: rgba(244, 228, 188, 0.7);
+    border: 2px solid var(--parchment-shadow);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 200px;
+  }
+  .discard-title {
+    font-size: 14px;
+    color: var(--ink-light);
+    text-align: center;
+    letter-spacing: 3px;
+    border-bottom: 1px dashed var(--parchment-shadow);
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+    font-weight: bold;
+  }
+  .discard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .discard-cell {
+    background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 1.5px solid var(--parchment-shadow);
+    border-radius: 6px;
+    padding: 6px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    transition: all 0.3s;
+  }
+  .discard-cell.has-cards { border-color: var(--blood); background: linear-gradient(135deg, #f4d4a8 0%, #d4a878 100%); }
+  .discard-cell.exhausted { opacity: 0.45; background: rgba(139, 111, 71, 0.2); }
+  .discard-cell-left { display: flex; align-items: center; gap: 4px; }
+  .discard-cell-num { font-size: 18px; font-weight: bold; color: var(--ink); }
+  .discard-cell-icon { font-size: 14px; }
+  .discard-cell-count { font-size: 14px; color: var(--ink-light); font-weight: bold; }
+  .discard-cell-count strong { color: var(--blood); font-size: 16px; }
+  .discard-cell-max { font-size: 11px; opacity: 0.65; }
+
+  .log {
+    background: rgba(244, 228, 188, 0.7);
+    border: 2px solid var(--parchment-shadow);
+    border-radius: 12px;
+    padding: 12px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .log-entry {
+    padding: 3px 6px;
+    border-bottom: 1px dashed rgba(139, 111, 71, 0.3);
+    color: var(--ink);
+    animation: fadeIn 0.4s;
+  }
+  .log-entry.event { color: var(--magic-purple); font-weight: bold; }
+  .log-entry.damage { color: var(--blood); }
+  .log-entry.heal { color: var(--magic-green); }
+  .log-entry.win { color: var(--gold); font-size: 15px; font-weight: bold; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+
+  .my-zone {
+    background: rgba(232, 200, 120, 0.3);
+    border: 3px solid var(--gold);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: inset 0 0 20px rgba(232, 200, 120, 0.2);
+    transition: all 0.3s;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .my-zone.active {
+    border-color: var(--blood);
+    box-shadow: 0 0 30px rgba(214, 56, 56, 0.4), inset 0 0 20px rgba(214, 56, 56, 0.1);
+  }
+
+  .action-panel {
+    margin-top: 14px;
+    padding: 12px;
+    background: rgba(61, 40, 23, 0.08);
+    border-radius: 8px;
+    border: 1px solid var(--parchment-shadow);
+  }
+  .action-title { font-size: 14px; color: var(--ink-light); margin-bottom: 10px; min-height: 22px; }
+  .action-title strong { color: var(--blood); }
+  .number-buttons {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+  }
+  .num-btn {
+    aspect-ratio: 1;
+    border: 2px solid var(--ink);
+    background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    color: var(--ink);
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 2px 0 var(--parchment-shadow);
+    font-weight: bold;
+  }
+  .num-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, var(--gold-bright) 0%, var(--gold) 100%);
+    box-shadow: 0 4px 0 var(--parchment-shadow), 0 0 12px rgba(232, 200, 120, 0.6);
+  }
+  .num-btn:active:not(:disabled) { transform: translateY(0); box-shadow: 0 0 0 var(--parchment-shadow); }
+  .num-btn:disabled { opacity: 0.25; cursor: not-allowed; background: rgba(139, 111, 71, 0.2); }
+  .pass-btn-row { margin-top: 10px; display: flex; justify-content: center; }
+  .pass-btn {
+    background: linear-gradient(135deg, var(--magic-green) 0%, #2a5a35 100%);
+    color: var(--parchment);
+    border: 2px solid var(--ink);
+    padding: 10px 28px;
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 4px;
+    box-shadow: 0 3px 0 #1a3a25;
+  }
+  .pass-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 0 #1a3a25; }
+  .pass-btn:disabled { opacity: 0.35; cursor: not-allowed; background: rgba(139,111,71,0.4); box-shadow: none; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.show { display: flex; animation: fadeIn 0.3s; }
+  .modal {
+    background: radial-gradient(ellipse at center, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 4px solid var(--gold);
+    border-radius: 16px;
+    padding: 32px 40px;
+    max-width: 500px;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(232, 200, 120, 0.5);
+    position: relative;
+    animation: zoomIn 0.4s;
+  }
+  @keyframes zoomIn { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal h2 { font-size: 26px; margin-bottom: 12px; letter-spacing: 4px; color: var(--ink); }
+  .modal p { color: var(--ink-light); font-size: 16px; line-height: 1.7; margin-bottom: 14px; }
+  .modal-btn {
+    background: var(--blood);
+    color: var(--parchment);
+    border: none;
+    padding: 12px 32px;
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 4px;
+    box-shadow: 0 4px 0 #6b1818;
+  }
+  .modal-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #6b1818; }
+  .modal-close {
+    position: absolute;
+    top: 8px; right: 12px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: transparent;
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-close:hover { background: var(--blood); color: var(--parchment); border-color: var(--blood); transform: rotate(90deg); }
+
+  .dice {
+    display: inline-block;
+    width: 50px; height: 50px;
+    background: var(--parchment);
+    border: 3px solid var(--ink);
+    border-radius: 8px;
+    font-size: 32px;
+    line-height: 44px;
+    text-align: center;
+    margin: 8px;
+    animation: rollDice 0.6s;
+  }
+  @keyframes rollDice {
+    0% { transform: rotate(0) scale(0.5); }
+    50% { transform: rotate(360deg) scale(1.2); }
+    100% { transform: rotate(720deg) scale(1); }
+  }
+
+  .conn-status {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    background: var(--ink);
+    color: var(--parchment);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 60;
+    border: 1px solid var(--gold);
+  }
+  .conn-status.ok { background: var(--magic-green); }
+  .conn-status.bad { background: var(--blood); }
+
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: var(--parchment);
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 2px solid var(--gold);
+    font-size: 15px;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  .help-btn {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    z-index: 50;
+  }
+
+  .help-content { text-align: left; max-height: 70vh; overflow-y: auto; }
+  .help-content h3 { color: var(--blood); margin-top: 12px; margin-bottom: 6px; font-size: 16px; }
+  .help-content p, .help-content li { color: var(--ink); font-size: 13px; line-height: 1.7; }
+  .help-content ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+
+<div class="conn-status" id="connStatus">连接中…</div>
+
+<div class="container">
+  <div class="game-title">
+    <h1>江湖魔法师</h1>
+    <div class="subtitle">— 联机版 · 单房间 —</div>
+  </div>
+
+  <!-- 大厅 -->
+  <div id="lobbyView" class="lobby" style="display:none">
+    <h2>等待玩家入座</h2>
+    <div class="hint">3-6 人皆可开局，选择一个空座位坐下</div>
+    <div class="seat-grid" id="seatGrid"></div>
+    <div class="lobby-actions">
+      <button class="lobby-btn" id="startBtn" onclick="sendStart()" disabled>开始游戏</button>
+    </div>
+    <div class="invite-box">
+      <strong>邀请朋友</strong> · 把下面的链接发给他们，让他们选择空座位<br>
+      <span class="invite-link" onclick="copyLink(this)" id="inviteLink"></span>
+    </div>
+  </div>
+
+  <!-- 游戏 -->
+  <div id="gameView" style="display:none">
+    <div class="table">
+      <div class="top-players" id="topPlayers"></div>
+      <div class="middle-area">
+        <div class="side-info">
+          <div class="deck-area">
+            <div class="deck-stack">魔</div>
+            <div class="deck-count">牌堆 <strong id="deckCount">0</strong> 张</div>
+          </div>
+        </div>
+        <div class="discard-pile" id="discardPile"></div>
+        <div class="side-info right-info">
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+      <div class="my-zone" id="myZone">
+        <div class="player-header">
+          <div class="player-name" id="myName">— <span class="seat" id="mySeat">座位 ?</span></div>
+          <div class="hp-display" id="myHp"></div>
+        </div>
+        <div class="hand" id="myHand"></div>
+        <div class="action-panel">
+          <div class="action-title" id="actionTitle">等待中…</div>
+          <div class="number-buttons" id="numberButtons"></div>
+          <div class="pass-btn-row">
+            <button class="pass-btn" id="passBtn" onclick="sendPass()" disabled>过 牌</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="help-btn" onclick="showHelp()">?</button>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CARD_DEFS = {
+  1: { name: '红龙召唤', icon: '🐉' },
+  2: { name: '恶灵附身', icon: '👻' },
+  3: { name: '治愈术',   icon: '🌈' },
+  4: { name: '窥视',     icon: '🦉' },
+  5: { name: '闪电风暴', icon: '⚡' },
+  6: { name: '火球术',   icon: '🔥' },
+  7: { name: '冰锥术',   icon: '❄️' },
+  8: { name: '治疗药剂', icon: '🧪' },
+};
+
+let ws = null;
+let myPid = null;
+let lobbyData = null;
+let gameState = null;
+let revealAfterEnd = false;
+let lastPendingShown = null; // 防止反复弹窗
+
+// ============ WebSocket ============
+function connect(seat) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws${seat !== null && seat !== undefined ? '?seat=' + seat : ''}`;
+  ws = new WebSocket(url);
+  setStatus('连接中…', '');
+
+  ws.onopen = () => setStatus('已连接', 'ok');
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'joined') {
+      myPid = msg.pid;
+      // 写入 url 参数（方便刷新后回到原座位）
+      const url = new URL(location.href);
+      url.searchParams.set('seat', myPid);
+      history.replaceState({}, '', url.toString());
+    } else if (msg.type === 'lobby') {
+      lobbyData = msg.data;
+      gameState = null;
+      renderLobby();
+    } else if (msg.type === 'state') {
+      gameState = msg.data;
+      lobbyData = null;
+      renderGame();
+    } else if (msg.type === 'error') {
+      toast(msg.msg || '出错了');
+    }
+  };
+  ws.onclose = () => {
+    setStatus('已断开 · 5 秒后重连', 'bad');
+    setTimeout(() => connect(myPid), 5000);
+  };
+  ws.onerror = () => setStatus('连接错误', 'bad');
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function setStatus(text, cls) {
+  const el = document.getElementById('connStatus');
+  el.textContent = text;
+  el.className = 'conn-status ' + (cls || '');
+}
+
+function toast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ============ 大厅渲染 ============
+function renderLobby() {
+  document.getElementById('lobbyView').style.display = '';
+  document.getElementById('gameView').style.display = 'none';
+
+  const seatGrid = document.getElementById('seatGrid');
+  const seats = lobbyData.seats || [];
+  // 决定显示几个座位：至少显示已占的最大 idx+1，且至少 3 个
+  let maxShow = 3;
+  for (const s of seats) if (s.taken) maxShow = Math.max(maxShow, s.seat + 1 + 1);
+  maxShow = Math.min(6, Math.max(3, maxShow));
+
+  let html = '';
+  for (let i = 0; i < maxShow; i++) {
+    const s = seats[i] || { seat: i, taken: false, online: false };
+    const isMe = (myPid === i);
+    const cls = ['seat-card'];
+    if (s.taken) cls.push('taken');
+    if (isMe) cls.push('you');
+    let inner = `<div class="seat-num">座位 ${i + 1}</div>`;
+    if (s.taken) {
+      inner += `<div class="seat-status">${s.name || '已入座'}</div>`;
+      if (!s.online) inner += `<div class="offline-tag">离线</div>`;
+    } else {
+      inner += `<div class="seat-status">空</div>`;
+    }
+    if (isMe) inner += `<div class="you-tag">你</div>`;
+    const onclick = (!s.taken && myPid !== i) ? `onclick="takeSeat(${i})"` : '';
+    html += `<div class="${cls.join(' ')}" ${onclick} style="${(!s.taken && myPid !== i) ? 'cursor:pointer' : ''}">${inner}</div>`;
+  }
+  // 还可以显示一个 "+" 按钮加新座位
+  if (maxShow < 6) {
+    html += `<div class="seat-card" onclick="addSeatSlot()" style="cursor:pointer; border-style:dashed; opacity:0.7"><div class="seat-num">+</div><div class="seat-status">显示更多座位</div></div>`;
+  }
+  seatGrid.innerHTML = html;
+
+  // 开始按钮
+  const startBtn = document.getElementById('startBtn');
+  startBtn.disabled = (lobbyData.occupied < 3);
+  startBtn.textContent = lobbyData.occupied < 3 ? `开始游戏（${lobbyData.occupied}/3 人）` : `开始游戏（${lobbyData.occupied} 人）`;
+
+  // 邀请链接
+  const link = location.origin + location.pathname;
+  document.getElementById('inviteLink').textContent = link;
+}
+
+let _extraSlot = 0;
+function addSeatSlot() { _extraSlot++; renderLobby(); }
+
+function takeSeat(i) {
+  // 重新连接到指定座位
+  if (ws) ws.close();
+  myPid = i;
+  connect(i);
+}
+
+function sendStart() {
+  send({ type: 'start_game' });
+}
+
+function copyLink(el) {
+  const text = el.textContent;
+  navigator.clipboard.writeText(text).then(() => toast('已复制邀请链接')).catch(() => toast('复制失败，请手动选择'));
+}
+
+// ============ 游戏渲染 ============
+function renderGame() {
+  document.getElementById('lobbyView').style.display = 'none';
+  document.getElementById('gameView').style.display = '';
+
+  renderTopPlayers();
+  renderMe();
+  renderDeck();
+  renderDiscardPile();
+  renderLog();
+  renderActions();
+  handlePending();
+
+  if (gameState.game_over && !revealAfterEnd) {
+    // 显示结束弹窗
+    const winner = gameState.winner_id !== null ? gameState.players[gameState.winner_id] : null;
+    const won = winner && winner.id === myPid;
+    showModal(`<h2>${won ? '你赢了！' : (winner ? winner.name + ' 获胜' : '平局')}</h2>
+      <p>${won ? '🎉 精彩的胜利！' : '本局结束。'}</p>
+      <button class="modal-btn" onclick="returnToLobby()">返回大厅</button>
+      <p style="font-size:13px; margin-top:14px; color: var(--ink-light);">关闭可查看所有人的牌 ↗</p>`, true);
+    revealAfterEnd = true;
+  }
+  if (!gameState.game_over) revealAfterEnd = false;
+}
+
+function renderTopPlayers() {
+  const me = gameState.viewer_id;
+  const N = gameState.player_count;
+  // 按顺时针顺序，从 me+1 开始，到 me-1 结束（不包含自己）
+  const orderedIds = [];
+  for (let i = 1; i < N; i++) orderedIds.push((me + i) % N);
+  // 顺序：第一个是下家(me+1)、最后一个是上家(me-1)
+  // 我们想把上家放最左，下家放最右 → 反转顺序，使之变成: 上家, 上上家, ..., 下家
+  orderedIds.reverse();
+
+  const top = document.getElementById('topPlayers');
+  top.className = 'top-players cols-' + orderedIds.length;
+  let html = '';
+  for (const id of orderedIds) {
+    const p = gameState.players[id];
+    const cls = ['player-zone'];
+    if (gameState.current_player === id && !gameState.game_over) cls.push('active');
+    if (p.eliminated) cls.push('eliminated');
+    if (!p.connected) cls.push('offline');
+    let label = '';
+    if (id === (me + 1) % N) label = '下家';
+    else if (id === (me - 1 + N) % N) label = '上家';
+    else label = '';
+    const offlineBadge = p.connected ? '' : '<span class="offline-badge">离线</span>';
+    let handHtml = '';
+    if (p.hand) {
+      // 游戏结束后揭示自己手牌；其他玩家始终可见（你看见别人的牌）
+      handHtml = p.hand.map(n => renderCard(n, false)).join('');
+    } else {
+      // 自己视角下其他玩家仍然有 hand 数组（因为 to_public）
+      handHtml = '';
+    }
+    html += `
+      <div class="${cls.join(' ')}">
+        <div class="player-header">
+          <div class="player-name">${p.name}${offlineBadge}<span class="seat">座位${id + 1}${label ? ' · ' + label : ''}</span></div>
+          <div class="hp-display">${renderHearts(p.hp)}</div>
+        </div>
+        <div class="hand">${handHtml}</div>
+      </div>
+    `;
+  }
+  top.innerHTML = html;
+}
+
+function renderMe() {
+  const me = gameState.players[gameState.viewer_id];
+  document.getElementById('myName').firstChild.textContent = me.name + ' ';
+  document.getElementById('mySeat').textContent = '座位 ' + (gameState.viewer_id + 1);
+  document.getElementById('myHp').innerHTML = renderHearts(me.hp);
+  const hand = document.getElementById('myHand');
+  // 游戏结束后揭示
+  const reveal = gameState.game_over;
+  if (reveal && me.hand) {
+    hand.innerHTML = me.hand.map(n => renderCard(n, false)).join('');
+  } else {
+    let html = '';
+    const size = me.hand_size || 0;
+    for (let i = 0; i < size; i++) {
+      if (i === me.peeked_idx && me.peeked_card !== null && me.peeked_card !== undefined) {
+        html += renderCard(me.peeked_card, false, true);
+      } else {
+        html += `<div class="card back"></div>`;
+      }
+    }
+    hand.innerHTML = html;
+  }
+  document.getElementById('myZone').classList.toggle('active', gameState.current_player === gameState.viewer_id && !gameState.game_over);
+}
+
+function renderCard(num, isBack, peeked = false) {
+  if (isBack) return `<div class="card back"></div>`;
+  const def = CARD_DEFS[num];
+  return `<div class="card ${peeked ? 'peeked' : ''}">
+    <div class="card-icon">${def.icon}</div>
+    <div class="card-number">${num}</div>
+    <div class="card-name">${def.name}</div>
+  </div>`;
+}
+
+function renderHearts(hp) {
+  let html = '';
+  for (let i = 0; i < 6; i++) html += `<div class="heart ${i < hp ? 'full' : 'empty'}"></div>`;
+  return html;
+}
+
+function renderDeck() {
+  document.getElementById('deckCount').textContent = gameState.deck_size;
+}
+
+function renderDiscardPile() {
+  const div = document.getElementById('discardPile');
+  let html = `<div class="discard-title">已弃牌池</div><div class="discard-grid">`;
+  for (let n = 1; n <= 8; n++) {
+    const cnt = gameState.discard_counts[n] || 0;
+    const max = n;
+    const cls = cnt === 0 ? '' : (cnt >= max ? 'has-cards exhausted' : 'has-cards');
+    html += `<div class="discard-cell ${cls}">
+      <div class="discard-cell-left"><div class="discard-cell-num">${n}</div><div class="discard-cell-icon">${CARD_DEFS[n].icon}</div></div>
+      <div class="discard-cell-count"><strong>${cnt}</strong><span class="discard-cell-max">/${max}</span></div>
+    </div>`;
+  }
+  html += `</div>`;
+  div.innerHTML = html;
+}
+
+function renderLog() {
+  const logDiv = document.getElementById('log');
+  logDiv.innerHTML = (gameState.log || []).map(e => `<div class="log-entry ${e.cls}">${e.text}</div>`).join('');
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function renderActions() {
+  const titleDiv = document.getElementById('actionTitle');
+  const btnsDiv = document.getElementById('numberButtons');
+  const passBtn = document.getElementById('passBtn');
+  if (gameState.game_over) {
+    titleDiv.textContent = '游戏结束';
+    btnsDiv.innerHTML = '';
+    passBtn.disabled = true;
+    return;
+  }
+  const me = gameState.players[gameState.viewer_id];
+  if (me.eliminated) {
+    titleDiv.textContent = '你已出局，等待游戏结束';
+    btnsDiv.innerHTML = '';
+    passBtn.disabled = true;
+    return;
+  }
+  if (gameState.current_player !== gameState.viewer_id) {
+    titleDiv.innerHTML = `轮到 <strong>${gameState.players[gameState.current_player].name}</strong> 出牌…`;
+    btnsDiv.innerHTML = '';
+    passBtn.disabled = true;
+    return;
+  }
+  if (gameState.pending && gameState.pending.player_id === gameState.viewer_id) {
+    titleDiv.textContent = '请处理弹窗中的选择';
+    btnsDiv.innerHTML = '';
+    passBtn.disabled = true;
+    return;
+  }
+  titleDiv.innerHTML = `请选择要喊的号码（最小可喊 <strong>${gameState.min_callable}</strong>，同号可连喊）：`;
+  let html = '';
+  for (let n = 1; n <= 8; n++) {
+    const disabled = n < gameState.min_callable;
+    html += `<button class="num-btn" ${disabled ? 'disabled' : ''} onclick="sendCall(${n})">${n}</button>`;
+  }
+  btnsDiv.innerHTML = html;
+  passBtn.disabled = !gameState.has_called_this_turn;
+}
+
+// ============ Pending（治愈术骰子 / 窥视）============
+function handlePending() {
+  if (!gameState.pending) { lastPendingShown = null; return; }
+  const p = gameState.pending;
+  if (p.player_id !== gameState.viewer_id) return; // 别人的弹窗
+  const key = JSON.stringify(p);
+  if (lastPendingShown === key) return; // 避免重复
+  lastPendingShown = key;
+
+  if (p.kind === 'dice') {
+    showModal(`<h2>治愈术 🌈</h2>
+      <div class="dice">${p.value}</div>
+      <p>掷出 <strong>${p.value}</strong>，回复 ${p.value} 点生命！</p>
+      <button class="modal-btn" onclick="closeModal(); send({type:'confirm_dice'})">确定</button>`);
+  } else if (p.kind === 'peek_choose') {
+    let html = `<h2>窥视 🦉</h2><p>选择要查看的手牌位置：</p>
+      <div style="display:flex; gap:8px; justify-content:center; margin:16px 0; flex-wrap:wrap;">`;
+    for (let i = 0; i < p.hand_size; i++) {
+      html += `<button class="num-btn" style="width:50px; height:70px;" onclick="closeModal(); send({type:'choose_peek', idx: ${i}})">第${i + 1}张</button>`;
+    }
+    html += `</div>`;
+    showModal(html);
+  } else if (p.kind === 'peek_show') {
+    showModal(`<h2>看到了！</h2>
+      <div style="margin:16px auto; transform:scale(1.5); width:fit-content;">${renderCard(p.card, false)}</div>
+      <p>这是 <strong>${p.card}号 · ${CARD_DEFS[p.card].name}</strong></p>
+      <button class="modal-btn" onclick="closeModal(); send({type:'confirm_peek'})">收起</button>`);
+  }
+}
+
+// ============ 操作发送 ============
+function sendCall(n) { send({ type: 'call', n }); }
+function sendPass() { send({ type: 'pass' }); }
+
+function returnToLobby() {
+  closeModal();
+  // 服务器会自动在游戏结束后允许新对局；这里发起 reset
+  fetch('/api/reset', { method: 'POST' }).then(() => {
+    // 重新连接为新玩家
+    if (ws) ws.close();
+    const url = new URL(location.href);
+    url.searchParams.delete('seat');
+    history.replaceState({}, '', url.toString());
+    myPid = null;
+    connect(null);
+  });
+}
+
+// ============ Modal & Help ============
+function showModal(html, closable) {
+  const closeBtn = closable ? `<button class="modal-close" onclick="closeModal()" title="关闭">✕</button>` : '';
+  document.getElementById('modalContent').innerHTML = closeBtn + html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+function showHelp() {
+  showModal(`<div class="help-content">
+    <h2 style="text-align:center;">游戏规则</h2>
+    <h3>🎯 胜利</h3>
+    <p>① 一回合内喊光所有手牌即胜  ② 熬到最后一个存活</p>
+    <h3>🃏 卡牌</h3>
+    <p>1×1, 2×2 … 8×8，共 36 张。每人初始 5 张。<strong>看不见自己的牌，只能看见别人的。</strong></p>
+    <h3>🎤 喊牌</h3>
+    <ul>
+      <li>喊对 → 打出该牌+触发法术，可继续喊（≥已喊号、同号可连喊）</li>
+      <li>喊错 → 扣 1 血（红龙反噬扣 2 血），回合结束</li>
+      <li>过牌 → 喊对至少 1 次后可主动结束回合</li>
+    </ul>
+    <h3>📋 弃牌池</h3>
+    <p>中央表格记录已弃牌数量，公开信息，是关键推理线索。</p>
+    <h3>🪄 法术</h3>
+    <p>1🐉 除自己每人-2  2👻 其他-1自己+1  3🌈 掷骰回1-6  4🦉 窥视1张<br>
+    5⚡ 左右各-1  6🔥 左-1  7❄️ 右-1  8🧪 自己+1</p>
+    <p style="text-align:center; margin-top:16px;"><button class="modal-btn" onclick="closeModal()">明白了</button></p>
+  </div>`, true);
+}
+
+// ============ Boot ============
+function boot() {
+  const params = new URLSearchParams(location.search);
+  const seat = params.get('seat');
+  connect(seat !== null ? parseInt(seat, 10) : null);
+}
+boot();
+</script>
+</body>
+</html>
