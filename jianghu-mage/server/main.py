@@ -17,7 +17,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.game import Game Player, FIRST_DECISION_SECONDS, SUBSEQUENT_DECISION_SECONDS
+from server.game import Game, Player, FIRST_DECISION_SECONDS, SUBSEQUENT_DECISION_SECONDS
 
 EXIT_VOTE_TIMEOUT = 30  # 投票退出的超时秒数
 BOT_THINK_MIN = 0.8     # 机器人最少思考时间
