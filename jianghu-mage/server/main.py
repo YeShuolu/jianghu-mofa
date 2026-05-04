@@ -13,7 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from game import Game, Player, TURN_TIMEOUT_SECONDS
+from server.game import Game, Player, TURN_TIMEOUT_SECONDS
 
 
 class Room:
