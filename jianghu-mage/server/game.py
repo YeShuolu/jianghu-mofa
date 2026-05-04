@@ -6,7 +6,7 @@ import random
 from typing import Optional
 
 CARD_DEFS = {
-    1: {"name": "红龙召唤", "icon": "🐉", "desc": "喊对：除自己外每人扣2血。喊错：自己扣2血"},
+    1: {"name": "红龙召唤", "icon": "🐉", "desc": "喊对：除自己外每人随机扣1-3血。喊错：自己随机扣1-3血"},
     2: {"name": "恶灵附身", "icon": "👻", "desc": "其他人各扣1血，自己回1血"},
     3: {"name": "治愈术",   "icon": "🌈", "desc": "掷骰，回复1-3点生命"},
     4: {"name": "窥视",     "icon": "🦉", "desc": "查看奥秘堆中一张未揭示的牌"},
@@ -19,7 +19,8 @@ CARD_DEFS = {
 MAX_HP = 6
 INITIAL_HAND = 5
 MYSTERY_DECK_SIZE = 4
-TURN_TIMEOUT_SECONDS = 30
+FIRST_DECISION_SECONDS = 45  # 一回合第一次决策的超时
+SUBSEQUENT_DECISION_SECONDS = 30  # 后续决策的超时
 
 
 class Player:
@@ -140,10 +141,11 @@ class Game:
 
         idx = player.hand.index(n) if n in player.hand else -1
         if idx == -1:
-            penalty = 2 if n == 1 else 1
             if n == 1:
-                self._log(f"✗ {player.name} 手里没有 1 号牌！红龙反噬，扣 2 血", "damage")
+                penalty = random.randint(1, 3)
+                self._log(f"✗ {player.name} 手里没有 1 号牌！红龙反噬，随机扣 {penalty} 血", "damage")
             else:
+                penalty = 1
                 self._log(f"✗ {player.name} 手里没有 {n} 号牌！扣 1 血", "damage")
             self._damage(player, penalty)
             self._end_turn()
@@ -184,9 +186,12 @@ class Game:
 
     def _cast_spell(self, player, n):
         if n == 1:
-            self._log("🐉 红龙降临，对所有敌人造成 2 点伤害", "damage")
+            self._log("🐉 红龙降临，对所有敌人各自造成随机伤害", "damage")
             for p in self._alive():
-                if p.id != player.id: self._damage(p, 2)
+                if p.id != player.id:
+                    dmg = random.randint(1, 3)
+                    self._log(f"   → {p.name} 被烧伤 {dmg} 点", "damage")
+                    self._damage(p, dmg)
         elif n == 2:
             self._log(f"👻 恶灵附身：其他人各扣 1 血，{player.name} 回 1 血", "event")
             for p in self._alive():

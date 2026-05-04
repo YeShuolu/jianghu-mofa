@@ -13,7 +13,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.game import Game, Player, TURN_TIMEOUT_SECONDS
+from game import Game, Player, FIRST_DECISION_SECONDS, SUBSEQUENT_DECISION_SECONDS
+
+EXIT_VOTE_TIMEOUT = 30  # 投票退出的超时秒数
 
 
 class Room:
@@ -29,7 +31,9 @@ class Room:
         # 投票
         self.exit_votes: set[int] = set()
         self.exit_vote_active: bool = False
-        # 超时定时任务
+        self.exit_vote_deadline: Optional[float] = None  # 投票截止时间戳
+        self.exit_vote_timer: Optional[asyncio.Task] = None
+        # 超时定时任务（喊牌）
         self.timer_task: Optional[asyncio.Task] = None
 
     def free_seats(self) -> list[int]:
@@ -165,6 +169,10 @@ async def websocket_endpoint(ws: WebSocket, seat: Optional[int] = Query(None)):
                         del room.players[pid]
                 # 投票期间断线视为放弃（不计票）
                 room.exit_votes.discard(pid)
+                if room.exit_vote_active and not room.exit_votes:
+                    _stop_exit_vote_timer()
+                    room.exit_vote_active = False
+                    room.exit_vote_deadline = None
         await broadcast_state_or_lobby()
 
 
@@ -254,28 +262,58 @@ async def handle_message(pid: int, msg: dict, ws: WebSocket):
         await broadcast_state_or_lobby()
         return
 
+    if t == "return_to_lobby":
+        # 整轮打完后，任何人可点 → 全员回大厅 + 分数清零
+        async with room.lock:
+            match_done = (room.current_round >= room.total_rounds and room.current_round > 0)
+            if not match_done:
+                await ws.send_json({"type": "error", "msg": "整轮尚未打完，无法返回大厅"})
+                return
+            for p in room.players.values():
+                p.score = 0
+            room.current_round = 0
+            room.game = None
+            room.exit_votes.clear()
+            room.exit_vote_active = False
+            _stop_turn_timer()
+        await broadcast_state_or_lobby()
+        return
+
     if t == "vote_exit":
-        # 发起 / 响应"返回大厅"投票
         async with room.lock:
             if not room.in_game():
                 await ws.send_json({"type": "error", "msg": "无需投票（不在游戏中）"})
                 return
             yes = bool(msg.get("yes", True))
             if yes:
+                # 第一票：启动倒计时
+                if not room.exit_vote_active:
+                    room.exit_vote_active = True
+                    room.exit_vote_deadline = time.time() + EXIT_VOTE_TIMEOUT
+                    _start_exit_vote_timer()
                 room.exit_votes.add(pid)
-                room.exit_vote_active = True
             else:
                 room.exit_votes.discard(pid)
+                # 没人投了，结束投票
+                if not room.exit_votes:
+                    _stop_exit_vote_timer()
+                    room.exit_vote_active = False
+                    room.exit_vote_deadline = None
             # 达到 2 人 → 通过
             if len(room.exit_votes) >= 2:
-                # 中途返回大厅 = 本局作废，分数不变，已完成局数也不变
-                room.game._log("🚪 投票通过：本局中途结束，返回大厅", "event")
+                _stop_exit_vote_timer()
+                room.game._log("🚪 投票通过：本局中止，赛制重置，所有分数清零", "event")
                 room.game.game_over = True
-                room.game.winner_id = None  # 没有胜者
+                room.game.winner_id = None
                 room.exit_votes.clear()
                 room.exit_vote_active = False
+                room.exit_vote_deadline = None
                 _stop_turn_timer()
-                # 注意：不增加 current_round（这局作废）
+                # 清零所有玩家的分数
+                for p in room.players.values():
+                    p.score = 0
+                # 已完成局数也清零（赛制完全重置）
+                room.current_round = 0
         await broadcast_state_or_lobby()
         return
 
@@ -337,6 +375,37 @@ def _reason_to_text(reason):
 
 
 # ============= 超时定时器 =============
+def _stop_exit_vote_timer():
+    if room.exit_vote_timer:
+        room.exit_vote_timer.cancel()
+        room.exit_vote_timer = None
+
+
+def _start_exit_vote_timer():
+    """投票发起后启动 30 秒倒计时；过期自动作废所有票"""
+    _stop_exit_vote_timer()
+    deadline = room.exit_vote_deadline
+
+    async def _wait():
+        try:
+            await asyncio.sleep(EXIT_VOTE_TIMEOUT)
+            async with room.lock:
+                # 二次校验：仍然是这次投票（没有被通过 / 取消）
+                if not room.exit_vote_active: return
+                if room.exit_vote_deadline != deadline: return
+                # 投票超时作废
+                if room.game:
+                    room.game._log("⌛ 投票超时，所有票作废", "event")
+                room.exit_votes.clear()
+                room.exit_vote_active = False
+                room.exit_vote_deadline = None
+            await broadcast_state_or_lobby()
+        except asyncio.CancelledError:
+            pass
+
+    room.exit_vote_timer = asyncio.create_task(_wait())
+
+
 def _stop_turn_timer():
     if room.timer_task:
         room.timer_task.cancel()
@@ -346,23 +415,27 @@ def _stop_turn_timer():
 
 
 def _start_turn_timer():
-    """启动当前回合（或当前 pending）的 30 秒超时"""
+    """启动当前回合（或当前 pending）的超时
+    - 一回合的第一次决策：45 秒
+    - 同回合后续决策（喊对后继续、处理弹窗）：30 秒
+    """
     _stop_turn_timer()
     if not room.game or room.game.game_over:
         return
-    deadline = time.time() + TURN_TIMEOUT_SECONDS
+    # 判断这是不是当前回合的第一次决策
+    # 标志：has_called_this_turn=False 且没有 pending → 一定是回合开头
+    is_first = (not room.game.has_called_this_turn) and (room.game.pending is None)
+    duration = FIRST_DECISION_SECONDS if is_first else SUBSEQUENT_DECISION_SECONDS
+    deadline = time.time() + duration
     room.game.turn_deadline = deadline
 
     async def _wait():
         try:
-            await asyncio.sleep(TURN_TIMEOUT_SECONDS)
+            await asyncio.sleep(duration)
             async with room.lock:
-                # 二次校验：仍然是这个超时窗口（没有被提前结束）
                 if not room.game or room.game.game_over: return
                 if room.game.turn_deadline != deadline: return
-                # 触发超时
                 if room.game.pending is not None:
-                    # pending 状态超时：直接清掉 pending 并结束回合
                     p = room.game.players[room.game.pending.get("player_id", 0)]
                     room.game._log(f"⏰ {p.name} 决策超时，扣 1 血", "damage")
                     room.game._damage(p, 1)
@@ -371,7 +444,6 @@ def _start_turn_timer():
                 else:
                     room.game.timeout_current()
                 room.game.turn_deadline = None
-            # 处理后续（包括下一回合启动新计时器）
             await _on_action_done()
         except asyncio.CancelledError:
             pass
@@ -452,6 +524,7 @@ def _match_meta():
         "current_round": room.current_round,
         "exit_votes": list(room.exit_votes),
         "exit_vote_active": room.exit_vote_active,
+        "exit_vote_deadline": room.exit_vote_deadline,
         "match_done": (room.current_round >= room.total_rounds and room.current_round > 0),
     }
 

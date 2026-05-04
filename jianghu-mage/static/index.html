@@ -425,6 +425,56 @@
   .conn-status.ok { background: var(--magic-green); }
   .conn-status.bad { background: var(--blood); }
 
+  .sound-btn {
+    position: fixed;
+    top: 10px;
+    left: 100px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--parchment);
+    border: 2px solid var(--gold);
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 60;
+    transition: transform 0.15s;
+  }
+  .sound-btn:hover { transform: scale(1.1); }
+
+  .return-lobby-btn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: linear-gradient(135deg, var(--blood) 0%, #6b1818 100%);
+    color: var(--parchment);
+    border: 2px solid var(--gold);
+    padding: 8px 16px;
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 3px;
+    z-index: 60;
+    box-shadow: 0 3px 0 #6b1818, 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.15s;
+  }
+  .return-lobby-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 0 #6b1818, 0 6px 16px rgba(0,0,0,0.5);
+  }
+  .return-lobby-btn:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: 0 0 0 #6b1818;
+  }
+  .return-lobby-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: linear-gradient(135deg, #5a3a3a 0%, #3a2424 100%);
+    border-color: var(--parchment-shadow);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
     background: var(--ink); color: var(--parchment); padding: 10px 20px;
@@ -454,6 +504,8 @@
 <body>
 
 <div class="conn-status" id="connStatus">连接中…</div>
+<button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="切换音效">🔊</button>
+<button class="return-lobby-btn" id="returnLobbyBtn" onclick="returnToLobby()" disabled title="整轮打完后才能返回">返回大厅</button>
 
 <div class="container">
   <div class="game-title">
@@ -563,6 +615,160 @@ let timerInterval = null;
 let myExitVoted = false;
 let lastGameOverShown = null;
 
+// ============ 音效引擎 ============
+let audioCtx = null;
+let soundEnabled = true; // 用户可关闭
+let lastTickSecond = -1;  // 滴答音去重
+let prevCurrentPlayer = null;  // 用于检测回合切换
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  // 浏览器需要用户交互后才能播
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// 通用合成器：生成一个 envelope 包络的振荡器
+function tone({ freq = 440, type = 'sine', duration = 0.15, vol = 0.2, attack = 0.005, decay = 0.05, freqEnd = null }) {
+  if (!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  if (freqEnd !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), now + duration);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(vol, now + attack);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.05);
+}
+
+// 播放和弦（多个频率叠加）
+function chord(freqs, opts = {}) {
+  freqs.forEach(f => tone({ ...opts, freq: f }));
+}
+
+// ===== 各种音效 =====
+const SFX = {
+  click() { tone({ freq: 800, type: 'square', duration: 0.04, vol: 0.08 }); },
+  hit() { // 喊对：上升音
+    tone({ freq: 523, type: 'triangle', duration: 0.12, vol: 0.18 });
+    setTimeout(() => tone({ freq: 784, type: 'triangle', duration: 0.18, vol: 0.18 }), 80);
+  },
+  miss() { // 喊错：下降音
+    tone({ freq: 330, type: 'sawtooth', duration: 0.18, vol: 0.15, freqEnd: 110 });
+  },
+  damage() { // 扣血：低音冲击
+    tone({ freq: 180, type: 'sawtooth', duration: 0.22, vol: 0.22, freqEnd: 80 });
+  },
+  heal() { // 回血：温和上升
+    tone({ freq: 440, type: 'sine', duration: 0.18, vol: 0.15 });
+    setTimeout(() => tone({ freq: 660, type: 'sine', duration: 0.22, vol: 0.15 }), 100);
+  },
+  spell() { // 法术触发：魔法感
+    tone({ freq: 880, type: 'triangle', duration: 0.08, vol: 0.12, freqEnd: 1320 });
+    setTimeout(() => tone({ freq: 1320, type: 'sine', duration: 0.12, vol: 0.1 }), 60);
+  },
+  yourTurn() { // 轮到你：清脆提示
+    tone({ freq: 660, type: 'sine', duration: 0.1, vol: 0.18 });
+    setTimeout(() => tone({ freq: 880, type: 'sine', duration: 0.14, vol: 0.18 }), 90);
+    setTimeout(() => tone({ freq: 1100, type: 'sine', duration: 0.18, vol: 0.18 }), 200);
+  },
+  tick() { // 滴答（最后 5 秒每秒一次）
+    tone({ freq: 1200, type: 'square', duration: 0.04, vol: 0.1 });
+  },
+  timeout() { // 超时警告
+    tone({ freq: 200, type: 'sawtooth', duration: 0.4, vol: 0.25, freqEnd: 100 });
+  },
+  win() { // 胜利：欢快和弦
+    chord([523, 659, 784], { type: 'triangle', duration: 0.3, vol: 0.15 });
+    setTimeout(() => chord([659, 784, 988], { type: 'triangle', duration: 0.4, vol: 0.18 }), 200);
+    setTimeout(() => chord([784, 988, 1175], { type: 'triangle', duration: 0.6, vol: 0.18 }), 450);
+  },
+  lose() { // 失败：低沉和弦
+    chord([220, 277], { type: 'sine', duration: 0.5, vol: 0.18 });
+    setTimeout(() => chord([196, 247], { type: 'sine', duration: 0.7, vol: 0.18 }), 350);
+  },
+  vote() { // 有人投票
+    tone({ freq: 392, type: 'square', duration: 0.06, vol: 0.12 });
+    setTimeout(() => tone({ freq: 392, type: 'square', duration: 0.06, vol: 0.12 }), 100);
+  },
+};
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('soundBtn');
+  if (btn) btn.textContent = soundEnabled ? '🔊' : '🔇';
+  if (soundEnabled) SFX.click();
+}
+
+// 比较前后 state，根据新增的 log 条目和状态变化播音效
+function playStateSounds(prev, curr) {
+  if (!soundEnabled || !curr) return;
+  const prevLogLen = prev?.log?.length || 0;
+  const currLog = curr.log || [];
+  // 只看新增的条目
+  const newEntries = currLog.slice(prevLogLen);
+
+  // 更可靠的方式：log 的 cls 已经标注了类型
+  let played = new Set();
+  for (const entry of newEntries) {
+    const text = entry.text || '';
+    const cls = entry.cls || '';
+
+    // 我自己赢了 / 我自己输了
+    if (cls === 'win') {
+      const myName = curr.players[curr.viewer_id]?.name;
+      if (myName && text.includes(myName)) {
+        if (!played.has('win')) { SFX.win(); played.add('win'); }
+      } else if (text.includes('胜利') || text.includes('结束')) {
+        if (!played.has('lose')) { SFX.lose(); played.add('lose'); }
+      }
+    }
+    // 喊对（log 含 "✓"）
+    else if (text.startsWith('✓')) {
+      if (!played.has('hit')) { SFX.hit(); played.add('hit'); }
+      setTimeout(() => SFX.spell(), 200);
+    }
+    // 喊错（log 含 "✗"）
+    else if (text.startsWith('✗')) {
+      if (!played.has('miss')) { SFX.miss(); played.add('miss'); }
+    }
+    // 超时
+    else if (text.startsWith('⏰')) {
+      if (!played.has('timeout')) { SFX.timeout(); played.add('timeout'); }
+    }
+    // 投票相关
+    else if (text.startsWith('🚪') || text.startsWith('⌛')) {
+      if (!played.has('vote')) { SFX.vote(); played.add('vote'); }
+    }
+    // 伤害（基于 cls）
+    else if (cls === 'damage' && !played.has('damage')) {
+      SFX.damage(); played.add('damage');
+    }
+    // 回血
+    else if (cls === 'heal' && !played.has('heal')) {
+      SFX.heal(); played.add('heal');
+    }
+  }
+
+  // 轮到自己出牌（current_player 切换到我）
+  const wasMyTurn = prev && prev.current_player === curr.viewer_id;
+  const isMyTurn = curr.current_player === curr.viewer_id;
+  if (!wasMyTurn && isMyTurn && !curr.game_over && !curr.players[curr.viewer_id]?.eliminated) {
+    // 延迟一点，避开伤害/喊错音
+    setTimeout(() => SFX.yourTurn(), 350);
+  }
+}
+
 // ====== WebSocket ======
 function connect(seat) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -584,9 +790,12 @@ function connect(seat) {
       stopTimer();
       renderLobby();
     } else if (msg.type === 'state') {
+      const prevState = gameState;
       gameState = msg.data;
       lobbyData = null;
       myExitVoted = (gameState.exit_votes || []).includes(myPid);
+      // 触发音效（基于 state 变化）
+      playStateSounds(prevState, gameState);
       renderGame();
       maybeStartTimer();
     } else if (msg.type === 'error') {
@@ -623,6 +832,8 @@ function toast(text) {
 function renderLobby() {
   document.getElementById('lobbyView').style.display = '';
   document.getElementById('gameView').style.display = 'none';
+  // 大厅时隐藏右上角返回按钮（已经在大厅了）
+  document.getElementById('returnLobbyBtn').style.display = 'none';
 
   const seatGrid = document.getElementById('seatGrid');
   const seats = lobbyData.seats || [];
@@ -665,6 +876,7 @@ function renderLobby() {
   startBtn.disabled = (lobbyData.occupied < 3);
   if (lobbyData.match_done) {
     startBtn.textContent = `开始新一轮（${lobbyData.occupied} 人 · ${lobbyData.total_rounds} 局）`;
+    startBtn.onclick = sendStart;
   } else if (lobbyData.current_round > 0) {
     const remain = lobbyData.total_rounds - lobbyData.current_round;
     startBtn.textContent = `继续下一局（剩 ${remain} 局）`;
@@ -729,7 +941,25 @@ function renderGame() {
   document.getElementById('lobbyView').style.display = 'none';
   document.getElementById('gameView').style.display = '';
 
-  document.getElementById('bannerRound').textContent = (gameState.current_round || 0) + 1;
+  // 右上角"返回大厅"按钮：只有整轮打完才亮
+  const returnBtn = document.getElementById('returnLobbyBtn');
+  if (gameState.match_done) {
+    returnBtn.disabled = false;
+    returnBtn.title = '整轮已结束，点击返回大厅';
+    returnBtn.style.display = '';
+  } else {
+    returnBtn.disabled = true;
+    returnBtn.title = `整轮打完后才能返回（当前 ${gameState.current_round || 0}/${gameState.total_rounds || '?'} 局）`;
+    returnBtn.style.display = '';
+  }
+
+  // 局数显示：进行中显示"第 N+1 局"；整轮结束显示"已完成 N/N"
+  const bannerRoundEl = document.getElementById('bannerRound');
+  if (gameState.match_done) {
+    bannerRoundEl.textContent = gameState.current_round;
+  } else {
+    bannerRoundEl.textContent = (gameState.current_round || 0) + 1;
+  }
   document.getElementById('bannerTotal').textContent = gameState.total_rounds || '?';
 
   // 计分板
@@ -742,10 +972,14 @@ function renderGame() {
   // 投票横幅
   const voteBanner = document.getElementById('voteBanner');
   if (gameState.exit_vote_active && (gameState.exit_votes || []).length > 0) {
-    voteBanner.innerHTML = `🚪 有 <strong>${gameState.exit_votes.length}</strong>/2 人投票要求返回大厅，再 1 票即可生效`;
+    const deadline = gameState.exit_vote_deadline;
+    const remain = deadline ? Math.max(0, Math.ceil(deadline - Date.now() / 1000)) : 0;
+    voteBanner.innerHTML = `🚪 有 <strong>${gameState.exit_votes.length}</strong>/2 人投票要求返回大厅，再 1 票即可生效 · ⏳ <strong id="voteCountdown">${remain}</strong> 秒后自动作废`;
     voteBanner.style.display = '';
+    if (deadline) startVoteCountdown(deadline);
   } else {
     voteBanner.style.display = 'none';
+    stopVoteCountdown();
   }
 
   renderTopPlayers();
@@ -778,18 +1012,19 @@ function renderGame() {
         msg = `本局结算：${winner.name} +1 分（共 ${winner.score} 分）`;
       } else {
         title = '本局已中止';
-        msg = '投票通过，本局作废，分数不变';
+        msg = '投票通过，本局作废';
       }
       if (isMatchDone) {
         const ranked = gameState.players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
         const champ = ranked[0];
         msg += `<br><br>🏆 整轮结束！冠军：<strong style="color:var(--blood)">${escapeHtml(champ.name)}</strong>（${champ.score} 分）`;
-        btn = `<button class="modal-btn" onclick="returnToLobby()">返回大厅</button>`;
+        msg += `<br><br><span style="font-size:13px; color: var(--ink-light);">慢慢复盘 — 关闭后可查看所有人的牌和奥秘堆，准备好后点右上角「返回大厅」</span>`;
+        btn = `<button class="modal-btn" onclick="closeModal()">关闭复盘</button>`;
       } else {
         btn = `<button class="modal-btn" onclick="closeModal(); send({type:'next_round'})">下一局</button>
-               <button class="modal-btn secondary" onclick="returnToLobby()">返回大厅</button>`;
+               <button class="modal-btn secondary" onclick="closeModal()">先看看</button>`;
       }
-      showModal(`<h2>${title}</h2><p>${msg}</p>${btn}<p style="font-size:12px; margin-top:10px; color: var(--ink-light);">关闭可查看所有人的牌 ↗</p>`, true);
+      showModal(`<h2>${title}</h2><p>${msg}</p>${btn}`, true);
       revealAfterEnd = true;
     }
   } else {
@@ -1004,7 +1239,12 @@ function maybeStartTimer() {
 
 function startTimer(deadline) {
   stopTimer();
-  const total = 30; // 秒
+  // 推算这次决策的总时长：根据剩余时间猜测（45 vs 30）
+  const initialRemaining = Math.max(0, deadline - Date.now() / 1000);
+  const total = initialRemaining > 32 ? 45 : 30;
+  // 重置滴答音状态（每个新计时器重新计）
+  lastTickSecond = -1;
+  const isMyTurnTimer = gameState && gameState.current_player === gameState.viewer_id;
   const update = () => {
     const remaining = Math.max(0, deadline - Date.now() / 1000);
     const pct = Math.max(0, (remaining / total) * 100);
@@ -1013,6 +1253,14 @@ function startTimer(deadline) {
     fill.style.width = pct + '%';
     text.textContent = `⏱ ${Math.ceil(remaining)} 秒`;
     text.classList.toggle('warning', remaining <= 10);
+    // 最后 5 秒滴答（仅在自己回合时响）
+    if (isMyTurnTimer && soundEnabled && remaining > 0 && remaining <= 5) {
+      const secInt = Math.ceil(remaining);
+      if (secInt !== lastTickSecond && secInt <= 5 && secInt >= 1) {
+        SFX.tick();
+        lastTickSecond = secInt;
+      }
+    }
     if (remaining <= 0) stopTimer();
   };
   update();
@@ -1023,19 +1271,34 @@ function stopTimer() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 }
 
+let voteCountdownInterval = null;
+function startVoteCountdown(deadline) {
+  stopVoteCountdown();
+  const update = () => {
+    const remain = Math.max(0, Math.ceil(deadline - Date.now() / 1000));
+    const el = document.getElementById('voteCountdown');
+    if (el) el.textContent = remain;
+    if (remain <= 0) stopVoteCountdown();
+  };
+  update();
+  voteCountdownInterval = setInterval(update, 500);
+}
+function stopVoteCountdown() {
+  if (voteCountdownInterval) { clearInterval(voteCountdownInterval); voteCountdownInterval = null; }
+}
+
 // ====== Actions ======
-function sendCall(n) { send({ type: 'call', n }); }
-function sendPass() { send({ type: 'pass' }); }
+function sendCall(n) { SFX.click(); send({ type: 'call', n }); }
+function sendPass() { SFX.click(); send({ type: 'pass' }); }
 function toggleExitVote() {
+  SFX.click();
   myExitVoted = !myExitVoted;
   send({ type: 'vote_exit', yes: myExitVoted });
 }
 
 function returnToLobby() {
   closeModal();
-  // 不重置整个房间，只是回到大厅视图（等待 lobby 推送或下一局）
-  // 如果游戏没结束，需要先投票；这里假设游戏已结束（按钮才出现），server 会按本局完成处理
-  // 实际逻辑：服务端会自动在 game_over 后等下一步操作（next_round / reset_match）
+  send({ type: 'return_to_lobby' });
 }
 
 function showModal(html, closable) {
@@ -1059,15 +1322,15 @@ function showHelp() {
       <li>喊对 → 打出+触发法术，可继续喊（≥已喊号、同号可连喊）</li>
       <li>喊错 → 扣 1 血（红龙反噬扣 2 血），回合结束</li>
       <li>过牌 → 喊对至少 1 次后可主动结束回合</li>
-      <li>⏰ 每个决策有 30 秒倒计时，超时扣 1 血</li>
+      <li>⏰ 每回合首次决策 45 秒，后续每次决策 30 秒，超时扣 1 血</li>
     </ul>
     <h3>🪄 法术</h3>
-    <p>1🐉 除自己每人-2  2👻 其他-1自己+1  3🌈 掷骰回1-3  4🦉 窥视奥秘<br>
+    <p>1🐉 除自己每人随机-1~3  2👻 其他-1自己+1  3🌈 掷骰回1-3  4🦉 窥视奥秘<br>
     5⚡ 左右各-1  6🔥 左-1  7❄️ 右-1  8🧪 自己+1</p>
     <h3>🏆 赛制</h3>
     <p>开局前选总局数（1/3/5/7），每局赢家+1分，跑完总局数后宣布冠军。</p>
     <h3>🚪 投票退出</h3>
-    <p>游戏中如果卡住，可点"投票返回大厅"，<strong>2 人同意</strong>即生效，本局作废。</p>
+    <p>游戏中如果卡住，可点"投票返回大厅"，<strong>2 人同意</strong>即生效，本局作废，<strong>所有分数清零、赛制重置</strong>。</p>
     <p style="text-align:center; margin-top:14px;"><button class="modal-btn" onclick="closeModal()">明白了</button></p>
   </div>`, true);
 }
