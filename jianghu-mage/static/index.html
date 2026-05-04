@@ -48,9 +48,9 @@
     box-shadow: 0 0 0 2px var(--gold), 0 20px 60px rgba(0,0,0,0.7);
     text-align: center;
   }
-  .lobby h2 { font-size: 26px; color: var(--ink); margin-bottom: 10px; letter-spacing: 4px; }
-  .lobby .hint { color: var(--ink-light); font-size: 14px; margin-bottom: 20px; line-height: 1.7; }
-  .seat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; max-width: 800px; margin: 0 auto 24px; }
+  .lobby h2 { font-size: 28px; color: var(--ink); margin-bottom: 10px; letter-spacing: 4px; }
+  .lobby .hint { color: var(--ink-light); font-size: 16px; margin-bottom: 20px; line-height: 1.7; }
+  .seat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; max-width: 800px; margin: 0 auto 24px; }
   .seat-card {
     background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
     border: 2px solid var(--parchment-shadow);
@@ -62,12 +62,36 @@
   .seat-card.taken { background: linear-gradient(135deg, #f4d4a8 0%, #c9a378 100%); border-color: var(--blood); }
   .seat-card.you { border-color: var(--gold-bright); border-width: 3px; box-shadow: 0 0 16px rgba(232, 200, 120, 0.6); }
   .seat-card .seat-num { font-size: 24px; font-weight: bold; color: var(--ink); margin-bottom: 4px; }
-  .seat-card .seat-status { font-size: 13px; color: var(--ink-light); min-height: 18px; }
-  .seat-card .seat-score { font-size: 12px; color: var(--blood); margin-top: 4px; font-weight: bold; }
-  .seat-card .you-tag { position: absolute; top: -8px; right: -8px; background: var(--gold-bright); color: var(--ink); font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--ink); }
-  .seat-card .offline-tag { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); background: rgba(160, 40, 40, 0.85); color: var(--parchment); font-size: 10px; padding: 1px 6px; border-radius: 6px; }
-  .seat-card .name-edit { background: transparent; border: 1px dashed var(--parchment-shadow); border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 13px; color: var(--ink); width: 90%; text-align: center; }
+  .seat-card .seat-status { font-size: 15px; color: var(--ink-light); min-height: 20px; }
+  .seat-card .seat-score { font-size: 14px; color: var(--blood); margin-top: 4px; font-weight: bold; }
+  .seat-card .you-tag { position: absolute; top: -8px; right: -8px; background: var(--gold-bright); color: var(--ink); font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--ink); }
+  .seat-card .offline-tag { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); background: rgba(160, 40, 40, 0.85); color: var(--parchment); font-size: 11px; padding: 1px 7px; border-radius: 6px; }
+  .seat-card .name-edit { background: transparent; border: 1px dashed var(--parchment-shadow); border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 14px; color: var(--ink); width: 90%; text-align: center; }
   .seat-card .name-edit:focus { outline: none; border-color: var(--blood); border-style: solid; }
+
+  /* 机器人座位标记 */
+  .seat-card.is-bot {
+    background: linear-gradient(135deg, #d8c4f0 0%, #a98ad6 100%);
+    border-color: var(--magic-purple);
+  }
+  .seat-card .bot-tag {
+    position: absolute; top: -8px; left: -8px;
+    background: var(--magic-purple); color: var(--gold-bright);
+    font-size: 12px; padding: 2px 8px; border-radius: 10px;
+    border: 1px solid var(--ink); font-weight: bold;
+  }
+  /* 大厅踢出按钮 */
+  .seat-card .kick-btn {
+    position: absolute; bottom: -10px; right: -8px;
+    background: var(--blood); color: var(--parchment);
+    border: 1px solid var(--ink); border-radius: 50%;
+    width: 24px; height: 24px; font-size: 14px;
+    cursor: pointer; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    transition: all 0.15s;
+  }
+  .seat-card .kick-btn:hover { background: var(--blood-bright); transform: scale(1.15); }
 
   .lobby-config {
     display: flex;
@@ -138,9 +162,9 @@
   .match-banner {
     background: rgba(61, 40, 23, 0.15);
     border-bottom: 1px dashed var(--parchment-shadow);
-    padding: 6px 12px;
+    padding: 8px 14px;
     margin: -10px -10px 14px;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--ink);
     display: flex;
     justify-content: space-between;
@@ -152,9 +176,9 @@
   .match-banner .score-chip {
     background: var(--parchment);
     border: 1px solid var(--parchment-shadow);
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 14px;
   }
   .match-banner .score-chip.leader { border-color: var(--blood); background: rgba(214, 56, 56, 0.15); font-weight: bold; }
   .match-banner .score-chip strong { color: var(--blood); }
@@ -165,6 +189,7 @@
   .top-players.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .top-players.cols-4 { grid-template-columns: repeat(4, 1fr); }
   .top-players.cols-5 { grid-template-columns: repeat(5, 1fr); }
+  .top-players.cols-6 { grid-template-columns: repeat(3, 1fr); }
 
   .player-zone {
     background: rgba(244, 228, 188, 0.4);
@@ -192,18 +217,22 @@
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 8px; flex-wrap: wrap; gap: 6px;
   }
-  .player-name { font-size: 15px; color: var(--ink); font-weight: bold; }
+  .player-name { font-size: 17px; color: var(--ink); font-weight: bold; }
   .player-name .seat {
-    font-size: 10px; background: var(--ink); color: var(--parchment);
-    padding: 1px 6px; border-radius: 6px; margin-left: 4px; vertical-align: middle;
+    font-size: 12px; background: var(--ink); color: var(--parchment);
+    padding: 2px 7px; border-radius: 6px; margin-left: 4px; vertical-align: middle;
   }
   .player-name .score-tag {
     background: var(--gold-bright); color: var(--ink);
-    font-size: 11px; padding: 1px 6px; border-radius: 6px; margin-left: 4px;
+    font-size: 13px; padding: 2px 7px; border-radius: 6px; margin-left: 4px;
   }
   .player-name .offline-badge {
     background: var(--blood); color: var(--parchment);
-    font-size: 10px; padding: 1px 5px; border-radius: 5px; margin-left: 4px;
+    font-size: 12px; padding: 2px 6px; border-radius: 5px; margin-left: 4px;
+  }
+  .player-name .bot-badge {
+    background: var(--magic-purple); color: var(--gold-bright);
+    font-size: 12px; padding: 2px 6px; border-radius: 5px; margin-left: 4px;
   }
   .hp-display { display: flex; gap: 2px; align-items: center; }
   .heart { width: 16px; height: 16px; position: relative; }
@@ -281,32 +310,32 @@
     border-radius: 12px; padding: 12px;
     display: flex; flex-direction: column; gap: 6px; min-width: 200px;
   }
-  .discard-title { font-size: 13px; color: var(--ink-light); text-align: center; letter-spacing: 3px; border-bottom: 1px dashed var(--parchment-shadow); padding-bottom: 5px; margin-bottom: 4px; font-weight: bold; }
+  .discard-title { font-size: 15px; color: var(--ink-light); text-align: center; letter-spacing: 3px; border-bottom: 1px dashed var(--parchment-shadow); padding-bottom: 5px; margin-bottom: 4px; font-weight: bold; }
   .discard-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .discard-cell {
     background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
-    border: 1.5px solid var(--parchment-shadow); border-radius: 6px; padding: 5px 4px;
+    border: 1.5px solid var(--parchment-shadow); border-radius: 6px; padding: 6px 5px;
     display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.3s;
   }
   .discard-cell.has-cards { border-color: var(--blood); background: linear-gradient(135deg, #f4d4a8 0%, #d4a878 100%); }
   .discard-cell.exhausted { opacity: 0.45; background: rgba(139, 111, 71, 0.2); }
   .discard-cell-left { display: flex; align-items: center; gap: 4px; }
-  .discard-cell-num { font-size: 16px; font-weight: bold; color: var(--ink); }
-  .discard-cell-icon { font-size: 13px; }
-  .discard-cell-count { font-size: 13px; color: var(--ink-light); font-weight: bold; }
-  .discard-cell-count strong { color: var(--blood); font-size: 14px; }
-  .discard-cell-max { font-size: 10px; opacity: 0.65; }
+  .discard-cell-num { font-size: 18px; font-weight: bold; color: var(--ink); }
+  .discard-cell-icon { font-size: 15px; }
+  .discard-cell-count { font-size: 15px; color: var(--ink-light); font-weight: bold; }
+  .discard-cell-count strong { color: var(--blood); font-size: 16px; }
+  .discard-cell-max { font-size: 11px; opacity: 0.7; }
 
   .log {
     background: rgba(244, 228, 188, 0.7); border: 2px solid var(--parchment-shadow);
-    border-radius: 12px; padding: 10px; height: 240px; overflow-y: auto;
-    font-size: 12px; line-height: 1.6;
+    border-radius: 12px; padding: 12px; height: 280px; overflow-y: auto;
+    font-size: 15px; line-height: 1.65;
   }
-  .log-entry { padding: 2px 5px; border-bottom: 1px dashed rgba(139, 111, 71, 0.3); color: var(--ink); animation: fadeIn 0.4s; }
+  .log-entry { padding: 3px 6px; border-bottom: 1px dashed rgba(139, 111, 71, 0.3); color: var(--ink); animation: fadeIn 0.4s; }
   .log-entry.event { color: var(--magic-purple); font-weight: bold; }
   .log-entry.damage { color: var(--blood); }
   .log-entry.heal { color: var(--magic-green); }
-  .log-entry.win { color: var(--gold); font-size: 14px; font-weight: bold; }
+  .log-entry.win { color: var(--gold); font-size: 17px; font-weight: bold; }
   @keyframes fadeIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
   .my-zone {
@@ -336,14 +365,14 @@
   }
   .timer-text {
     text-align: center;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--ink-light);
-    margin-top: 2px;
+    margin-top: 4px;
   }
   .timer-text.warning { color: var(--blood); font-weight: bold; }
 
-  .action-panel { margin-top: 12px; padding: 10px; background: rgba(61, 40, 23, 0.08); border-radius: 8px; border: 1px solid var(--parchment-shadow); }
-  .action-title { font-size: 13px; color: var(--ink-light); margin-bottom: 8px; min-height: 20px; }
+  .action-panel { margin-top: 12px; padding: 12px; background: rgba(61, 40, 23, 0.08); border-radius: 8px; border: 1px solid var(--parchment-shadow); }
+  .action-title { font-size: 15px; color: var(--ink-light); margin-bottom: 10px; min-height: 22px; }
   .action-title strong { color: var(--blood); }
   .number-buttons { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
   .num-btn {
@@ -378,11 +407,11 @@
     background: rgba(160, 40, 40, 0.15);
     border: 2px dashed var(--blood);
     border-radius: 8px;
-    padding: 10px;
+    padding: 12px;
     margin-bottom: 12px;
     text-align: center;
     color: var(--ink);
-    font-size: 14px;
+    font-size: 16px;
   }
   .vote-banner strong { color: var(--blood); }
 
@@ -491,9 +520,34 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 50;
   }
   .help-content { text-align: left; max-height: 70vh; overflow-y: auto; }
-  .help-content h3 { color: var(--blood); margin-top: 10px; margin-bottom: 6px; font-size: 15px; }
-  .help-content p, .help-content li { color: var(--ink); font-size: 13px; line-height: 1.7; }
+  .help-content h3 { color: var(--blood); margin-top: 10px; margin-bottom: 6px; font-size: 16px; }
+  .help-content p, .help-content li { color: var(--ink); font-size: 14px; line-height: 1.7; }
   .help-content ul { padding-left: 20px; }
+
+  /* 观战横幅 */
+  .spectator-banner {
+    background: linear-gradient(135deg, var(--magic-purple) 0%, #4a2862 100%);
+    color: var(--gold-bright);
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 14px;
+    text-align: center;
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+  .spectator-banner strong { color: var(--parchment); }
+  /* 大厅观战提示 */
+  .lobby-spectator-note {
+    margin-top: 12px;
+    padding: 10px;
+    background: rgba(107, 58, 138, 0.15);
+    border: 2px dashed var(--magic-purple);
+    border-radius: 8px;
+    color: var(--ink-light);
+    font-size: 14px;
+  }
+  .lobby-spectator-note strong { color: var(--magic-purple); }
 
   @media (max-width: 768px) {
     .top-players.cols-2, .top-players.cols-3, .top-players.cols-4, .top-players.cols-5 { grid-template-columns: 1fr 1fr; }
@@ -533,11 +587,17 @@
 
     <div class="lobby-actions">
       <button class="lobby-btn" id="startBtn" onclick="sendStart()" disabled>开始游戏</button>
+      <button class="lobby-btn secondary" id="addBotBtn" onclick="addBot()">+ 添加机器人</button>
+      <button class="lobby-btn secondary" id="kickBotBtn" onclick="kickBot()" disabled>− 踢出机器人</button>
       <button class="lobby-btn secondary" id="resetMatchBtn" onclick="resetMatch()" style="display:none">清零分数</button>
     </div>
     <div class="invite-box">
       <strong>邀请朋友</strong> · 把链接发给他们，自动选空座位<br>
       <span class="invite-link" onclick="copyLink(this)" id="inviteLink"></span>
+    </div>
+    <div class="lobby-spectator-note">
+      <strong>👁 想观战？</strong> 可以 <a href="javascript:void(0)" onclick="joinAsSpectator()" style="color:var(--blood); font-weight:bold;">以观战身份加入</a>（看见所有人的牌，无法操作）
+      <span id="spectatorCountText"></span>
     </div>
   </div>
 
@@ -546,6 +606,10 @@
       <div class="match-banner">
         <div>第 <strong id="bannerRound">?</strong>/<strong id="bannerTotal">?</strong> 局</div>
         <div class="scoreboard" id="scoreboard"></div>
+      </div>
+
+      <div class="spectator-banner" id="spectatorBanner" style="display:none">
+        👁 <strong>观战模式</strong> · 你可以看见所有人的手牌和奥秘堆，但无法操作
       </div>
 
       <div class="vote-banner" id="voteBanner" style="display:none"></div>
@@ -607,6 +671,7 @@ const CARD_DEFS = {
 
 let ws = null;
 let myPid = null;
+let isSpectator = false;
 let lobbyData = null;
 let gameState = null;
 let revealAfterEnd = false;
@@ -715,64 +780,65 @@ function playStateSounds(prev, curr) {
   if (!soundEnabled || !curr) return;
   const prevLogLen = prev?.log?.length || 0;
   const currLog = curr.log || [];
-  // 只看新增的条目
   const newEntries = currLog.slice(prevLogLen);
+  const spectating = isSpectator || curr.is_spectator;
+  const myView = spectating ? null : curr.players[curr.viewer_id];
+  const myName = myView ? myView.name : null;
 
-  // 更可靠的方式：log 的 cls 已经标注了类型
   let played = new Set();
   for (const entry of newEntries) {
     const text = entry.text || '';
     const cls = entry.cls || '';
 
-    // 我自己赢了 / 我自己输了
     if (cls === 'win') {
-      const myName = curr.players[curr.viewer_id]?.name;
-      if (myName && text.includes(myName)) {
+      // 观战者：只播一个中性音（用 vote 音代替，比较低调）
+      if (spectating) {
+        if (!played.has('vote')) { SFX.vote(); played.add('vote'); }
+      } else if (myName && text.includes(myName)) {
         if (!played.has('win')) { SFX.win(); played.add('win'); }
       } else if (text.includes('胜利') || text.includes('结束')) {
         if (!played.has('lose')) { SFX.lose(); played.add('lose'); }
       }
     }
-    // 喊对（log 含 "✓"）
     else if (text.startsWith('✓')) {
       if (!played.has('hit')) { SFX.hit(); played.add('hit'); }
       setTimeout(() => SFX.spell(), 200);
     }
-    // 喊错（log 含 "✗"）
     else if (text.startsWith('✗')) {
       if (!played.has('miss')) { SFX.miss(); played.add('miss'); }
     }
-    // 超时
     else if (text.startsWith('⏰')) {
       if (!played.has('timeout')) { SFX.timeout(); played.add('timeout'); }
     }
-    // 投票相关
     else if (text.startsWith('🚪') || text.startsWith('⌛')) {
       if (!played.has('vote')) { SFX.vote(); played.add('vote'); }
     }
-    // 伤害（基于 cls）
     else if (cls === 'damage' && !played.has('damage')) {
       SFX.damage(); played.add('damage');
     }
-    // 回血
     else if (cls === 'heal' && !played.has('heal')) {
       SFX.heal(); played.add('heal');
     }
   }
 
-  // 轮到自己出牌（current_player 切换到我）
-  const wasMyTurn = prev && prev.current_player === curr.viewer_id;
-  const isMyTurn = curr.current_player === curr.viewer_id;
-  if (!wasMyTurn && isMyTurn && !curr.game_over && !curr.players[curr.viewer_id]?.eliminated) {
-    // 延迟一点，避开伤害/喊错音
-    setTimeout(() => SFX.yourTurn(), 350);
+  // 轮到自己出牌（观战者不触发）
+  if (!spectating) {
+    const wasMyTurn = prev && prev.current_player === curr.viewer_id;
+    const isMyTurn = curr.current_player === curr.viewer_id;
+    if (!wasMyTurn && isMyTurn && !curr.game_over && !curr.players[curr.viewer_id]?.eliminated) {
+      setTimeout(() => SFX.yourTurn(), 350);
+    }
   }
 }
 
 // ====== WebSocket ======
-function connect(seat) {
+function connect(seat, spectate) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws${seat !== null && seat !== undefined ? '?seat=' + seat : ''}`;
+  const params = new URLSearchParams();
+  if (spectate) params.set('spectate', '1');
+  else if (seat !== null && seat !== undefined) params.set('seat', seat);
+  const qs = params.toString();
+  const url = `${proto}//${location.host}/ws${qs ? '?' + qs : ''}`;
   ws = new WebSocket(url);
   setStatus('连接中…', '');
 
@@ -781,8 +847,17 @@ function connect(seat) {
     const msg = JSON.parse(e.data);
     if (msg.type === 'joined') {
       myPid = msg.pid;
+      isSpectator = false;
       const url = new URL(location.href);
       url.searchParams.set('seat', myPid);
+      url.searchParams.delete('spectate');
+      history.replaceState({}, '', url.toString());
+    } else if (msg.type === 'joined_spectator') {
+      myPid = null;
+      isSpectator = true;
+      const url = new URL(location.href);
+      url.searchParams.delete('seat');
+      url.searchParams.set('spectate', '1');
       history.replaceState({}, '', url.toString());
     } else if (msg.type === 'lobby') {
       lobbyData = msg.data;
@@ -793,8 +868,7 @@ function connect(seat) {
       const prevState = gameState;
       gameState = msg.data;
       lobbyData = null;
-      myExitVoted = (gameState.exit_votes || []).includes(myPid);
-      // 触发音效（基于 state 变化）
+      myExitVoted = !isSpectator && (gameState.exit_votes || []).includes(myPid);
       playStateSounds(prevState, gameState);
       renderGame();
       maybeStartTimer();
@@ -805,7 +879,10 @@ function connect(seat) {
   ws.onclose = () => {
     setStatus('已断开 · 5 秒后重连', 'bad');
     stopTimer();
-    setTimeout(() => connect(myPid), 5000);
+    setTimeout(() => {
+      if (isSpectator) connect(null, true);
+      else connect(myPid, false);
+    }, 5000);
   };
   ws.onerror = () => setStatus('连接错误', 'bad');
 }
@@ -832,7 +909,6 @@ function toast(text) {
 function renderLobby() {
   document.getElementById('lobbyView').style.display = '';
   document.getElementById('gameView').style.display = 'none';
-  // 大厅时隐藏右上角返回按钮（已经在大厅了）
   document.getElementById('returnLobbyBtn').style.display = 'none';
 
   const seatGrid = document.getElementById('seatGrid');
@@ -843,14 +919,17 @@ function renderLobby() {
 
   let html = '';
   for (let i = 0; i < maxShow; i++) {
-    const s = seats[i] || { seat: i, taken: false, online: false, score: 0 };
-    const isMe = (myPid === i);
+    const s = seats[i] || { seat: i, taken: false, online: false, score: 0, is_bot: false };
+    const isMe = (!isSpectator && myPid === i);
     const cls = ['seat-card'];
     if (s.taken) cls.push('taken');
+    if (s.is_bot) cls.push('is-bot');
     if (isMe) cls.push('you');
     let inner = `<div class="seat-num">座位 ${i + 1}</div>`;
     if (s.taken) {
-      if (isMe) {
+      if (s.is_bot) {
+        inner += `<div class="seat-status">${escapeHtml(s.name || '机器人')}</div>`;
+      } else if (isMe) {
         inner += `<input class="name-edit" id="nameEdit_${i}" value="${escapeHtml(s.name || '')}" maxlength="12" onblur="saveName()" onkeydown="if(event.key==='Enter')this.blur()">`;
       } else {
         inner += `<div class="seat-status">${escapeHtml(s.name || '已入座')}</div>`;
@@ -861,8 +940,16 @@ function renderLobby() {
       inner += `<div class="seat-status">空</div>`;
     }
     if (isMe) inner += `<div class="you-tag">你</div>`;
-    const onclick = (!s.taken && myPid !== i) ? `onclick="takeSeat(${i})"` : '';
-    const cur = (!s.taken && myPid !== i) ? 'cursor:pointer' : '';
+    if (s.is_bot) inner += `<div class="bot-tag">🤖 AI</div>`;
+
+    // 踢出按钮：观战者也能踢，方便控制场面；条件是位被占且不是自己
+    if (s.taken && !isMe) {
+      const target = `kickPlayer(${i}, ${s.is_bot ? 'true' : 'false'}, '${escapeHtml(s.name || '').replace(/'/g, "\\'")}')`;
+      inner += `<button class="kick-btn" onclick="${target}" title="踢出 ${escapeHtml(s.name || '')}">✕</button>`;
+    }
+
+    const onclick = (!s.taken && !isSpectator && myPid !== i) ? `onclick="takeSeat(${i})"` : '';
+    const cur = (!s.taken && !isSpectator && myPid !== i) ? 'cursor:pointer' : '';
     html += `<div class="${cls.join(' ')}" ${onclick} style="${cur}">${inner}</div>`;
   }
   if (maxShow < 6) {
@@ -873,17 +960,35 @@ function renderLobby() {
   document.getElementById('roundsSelect').value = lobbyData.total_rounds;
 
   const startBtn = document.getElementById('startBtn');
-  startBtn.disabled = (lobbyData.occupied < 3);
-  if (lobbyData.match_done) {
-    startBtn.textContent = `开始新一轮（${lobbyData.occupied} 人 · ${lobbyData.total_rounds} 局）`;
-    startBtn.onclick = sendStart;
-  } else if (lobbyData.current_round > 0) {
-    const remain = lobbyData.total_rounds - lobbyData.current_round;
-    startBtn.textContent = `继续下一局（剩 ${remain} 局）`;
-    startBtn.onclick = () => send({ type: 'next_round' });
+  const addBotBtn = document.getElementById('addBotBtn');
+  const kickBotBtn = document.getElementById('kickBotBtn');
+
+  // 观战者：禁用所有操作按钮（开始、加机器人、踢机器人、改名、设置局数）
+  if (isSpectator) {
+    startBtn.disabled = true;
+    startBtn.textContent = '观战中（无法操作）';
+    addBotBtn.disabled = true;
+    kickBotBtn.disabled = true;
+    document.getElementById('roundsSelect').disabled = true;
   } else {
-    startBtn.textContent = lobbyData.occupied < 3 ? `开始游戏（${lobbyData.occupied}/3 人）` : `开始游戏（${lobbyData.occupied} 人 · ${lobbyData.total_rounds} 局）`;
-    startBtn.onclick = sendStart;
+    document.getElementById('roundsSelect').disabled = false;
+    addBotBtn.disabled = (lobbyData.occupied >= 6);
+    const botCount = seats.filter(s => s.taken && s.is_bot).length;
+    kickBotBtn.disabled = (botCount === 0);
+    kickBotBtn.textContent = botCount > 0 ? `− 踢出机器人（${botCount}）` : '− 踢出机器人';
+
+    startBtn.disabled = (lobbyData.occupied < 3);
+    if (lobbyData.match_done) {
+      startBtn.textContent = `开始新一轮（${lobbyData.occupied} 人 · ${lobbyData.total_rounds} 局）`;
+      startBtn.onclick = sendStart;
+    } else if (lobbyData.current_round > 0) {
+      const remain = lobbyData.total_rounds - lobbyData.current_round;
+      startBtn.textContent = `继续下一局（剩 ${remain} 局）`;
+      startBtn.onclick = () => send({ type: 'next_round' });
+    } else {
+      startBtn.textContent = lobbyData.occupied < 3 ? `开始游戏（${lobbyData.occupied}/3 人）` : `开始游戏（${lobbyData.occupied} 人 · ${lobbyData.total_rounds} 局）`;
+      startBtn.onclick = sendStart;
+    }
   }
 
   // 比赛总结
@@ -895,17 +1000,29 @@ function renderLobby() {
     const champ = ranked[0];
     summary.innerHTML = `🏆 <strong>本轮已结束</strong>，冠军：<strong style="color:var(--blood)">${escapeHtml(champ.name)}</strong>（${champ.score} 分）`;
     summary.style.display = '';
-    resetBtn.style.display = '';
+    resetBtn.style.display = isSpectator ? 'none' : '';
   } else if (hasScore) {
     summary.innerHTML = `比分中...（${lobbyData.current_round}/${lobbyData.total_rounds} 局已完成）`;
     summary.style.display = '';
-    resetBtn.style.display = '';
+    resetBtn.style.display = isSpectator ? 'none' : '';
   } else {
     summary.style.display = 'none';
     resetBtn.style.display = 'none';
   }
 
   document.getElementById('inviteLink').textContent = location.origin + location.pathname;
+
+  // 观战提示
+  const specCount = lobbyData.spectator_count || 0;
+  const specText = specCount > 0 ? `（当前观战人数：${specCount}）` : '';
+  document.getElementById('spectatorCountText').textContent = specText;
+  if (isSpectator) {
+    document.querySelector('.lobby-spectator-note').innerHTML =
+      `👁 <strong>你正在观战</strong>（看见所有牌，不参与游戏） · <a href="javascript:void(0)" onclick="leaveSpectator()" style="color:var(--blood); font-weight:bold;">退出观战</a>${specText}`;
+  } else {
+    document.querySelector('.lobby-spectator-note').innerHTML =
+      `<strong>👁 想观战？</strong> 可以 <a href="javascript:void(0)" onclick="joinAsSpectator()" style="color:var(--blood); font-weight:bold;">以观战身份加入</a>（看见所有人的牌，无法操作）${specText}`;
+  }
 }
 
 let extraSlots = 0;
@@ -913,7 +1030,8 @@ function addSeatSlot() { extraSlots++; renderLobby(); }
 function takeSeat(i) {
   if (ws) ws.close();
   myPid = i;
-  connect(i);
+  isSpectator = false;
+  connect(i, false);
 }
 function sendStart() { send({ type: 'start_game' }); }
 function setRounds() {
@@ -932,6 +1050,39 @@ function saveName() {
   const name = (inp.value || '').trim();
   if (name) send({ type: 'set_name', name });
 }
+
+// ===== 机器人 / 踢人 / 观战 =====
+function addBot() {
+  SFX.click();
+  send({ type: 'add_bot' });
+}
+function kickBot() {
+  SFX.click();
+  send({ type: 'kick_bot' });
+}
+function kickPlayer(seat, isBot, name) {
+  SFX.click();
+  if (isBot) {
+    send({ type: 'kick_bot', seat });
+    return;
+  }
+  if (!confirm(`确定要踢出 ${name || ('座位' + (seat + 1) + '玩家')} 吗？`)) return;
+  send({ type: 'kick_player', seat });
+}
+function joinAsSpectator() {
+  if (ws) ws.close();
+  myPid = null;
+  isSpectator = true;
+  connect(null, true);
+}
+function leaveSpectator() {
+  // 退出观战 → 重新连接为正常玩家（不带 spectate / seat 参数 → 自动选空座或转观战）
+  if (ws) ws.close();
+  myPid = null;
+  isSpectator = false;
+  connect(null, false);
+}
+
 function escapeHtml(s) {
   return String(s || '').replace(/[<>&"']/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;'})[c]);
 }
@@ -940,6 +1091,22 @@ function escapeHtml(s) {
 function renderGame() {
   document.getElementById('lobbyView').style.display = 'none';
   document.getElementById('gameView').style.display = '';
+
+  // 观战横幅
+  const specBanner = document.getElementById('spectatorBanner');
+  if (isSpectator || gameState.is_spectator) {
+    specBanner.style.display = '';
+  } else {
+    specBanner.style.display = 'none';
+  }
+
+  // 我的区域显示与否
+  const myZone = document.getElementById('myZone');
+  if (isSpectator || gameState.is_spectator) {
+    myZone.style.display = 'none';
+  } else {
+    myZone.style.display = '';
+  }
 
   // 右上角"返回大厅"按钮：只有整轮打完才亮
   const returnBtn = document.getElementById('returnLobbyBtn');
@@ -993,9 +1160,11 @@ function renderGame() {
 
   // 投票按钮状态
   const voteBtn = document.getElementById('voteExitBtn');
-  voteBtn.classList.toggle('voted', myExitVoted);
-  voteBtn.textContent = myExitVoted ? `已投票（${(gameState.exit_votes || []).length}/2）取消` : `投票返回大厅`;
-  voteBtn.disabled = gameState.game_over;
+  if (voteBtn) {
+    voteBtn.classList.toggle('voted', myExitVoted);
+    voteBtn.textContent = myExitVoted ? `已投票（${(gameState.exit_votes || []).length}/2）取消` : `投票返回大厅`;
+    voteBtn.disabled = gameState.game_over;
+  }
 
   // 游戏结束
   if (gameState.game_over) {
@@ -1004,11 +1173,16 @@ function renderGame() {
     if (lastGameOverShown !== sig) {
       lastGameOverShown = sig;
       const winner = gameState.winner_id !== null && gameState.winner_id !== undefined ? gameState.players[gameState.winner_id] : null;
-      const won = winner && winner.id === myPid;
+      const spectating = isSpectator || gameState.is_spectator;
+      const won = !spectating && winner && winner.id === myPid;
       const isMatchDone = gameState.match_done;
       let title, msg, btn;
       if (winner) {
-        title = won ? '本局你赢了！' : winner.name + ' 赢了本局';
+        if (spectating) {
+          title = winner.name + ' 赢了本局';
+        } else {
+          title = won ? '本局你赢了！' : winner.name + ' 赢了本局';
+        }
         msg = `本局结算：${winner.name} +1 分（共 ${winner.score} 分）`;
       } else {
         title = '本局已中止';
@@ -1019,6 +1193,9 @@ function renderGame() {
         const champ = ranked[0];
         msg += `<br><br>🏆 整轮结束！冠军：<strong style="color:var(--blood)">${escapeHtml(champ.name)}</strong>（${champ.score} 分）`;
         msg += `<br><br><span style="font-size:13px; color: var(--ink-light);">慢慢复盘 — 关闭后可查看所有人的牌和奥秘堆，准备好后点右上角「返回大厅」</span>`;
+        btn = `<button class="modal-btn" onclick="closeModal()">关闭复盘</button>`;
+      } else if (spectating) {
+        // 观战者只能看
         btn = `<button class="modal-btn" onclick="closeModal()">关闭复盘</button>`;
       } else {
         btn = `<button class="modal-btn" onclick="closeModal(); send({type:'next_round'})">下一局</button>
@@ -1034,31 +1211,42 @@ function renderGame() {
 }
 
 function renderTopPlayers() {
-  const me = gameState.viewer_id;
   const N = gameState.player_count;
-  const orderedIds = [];
-  for (let i = 1; i < N; i++) orderedIds.push((me + i) % N);
-  orderedIds.reverse(); // 上家在最左
+  // 观战时：me 不存在，从座位 0 顺序展示所有人
+  // 玩家时：me 在最下方（renderMe），上方按上家方向展示其他人
+  let orderedIds = [];
+  if (isSpectator || gameState.is_spectator) {
+    for (let i = 0; i < N; i++) orderedIds.push(i);
+  } else {
+    const me = gameState.viewer_id;
+    for (let i = 1; i < N; i++) orderedIds.push((me + i) % N);
+    orderedIds.reverse(); // 上家在最左
+  }
 
   const top = document.getElementById('topPlayers');
-  top.className = 'top-players cols-' + orderedIds.length;
+  const colsCount = orderedIds.length;
+  top.className = 'top-players cols-' + Math.min(6, colsCount);
   let html = '';
   for (const id of orderedIds) {
     const p = gameState.players[id];
     const cls = ['player-zone'];
     if (gameState.current_player === id && !gameState.game_over) cls.push('active');
     if (p.eliminated) cls.push('eliminated');
-    if (!p.connected) cls.push('offline');
+    if (!p.connected && !p.is_bot) cls.push('offline');
     let label = '';
-    if (id === (me + 1) % N) label = '下家';
-    else if (id === (me - 1 + N) % N) label = '上家';
-    const offlineBadge = p.connected ? '' : '<span class="offline-badge">离线</span>';
+    if (!isSpectator && !gameState.is_spectator) {
+      const me = gameState.viewer_id;
+      if (id === (me + 1) % N) label = '下家';
+      else if (id === (me - 1 + N) % N) label = '上家';
+    }
+    const offlineBadge = (!p.connected && !p.is_bot) ? '<span class="offline-badge">离线</span>' : '';
+    const botBadge = p.is_bot ? '<span class="bot-badge">🤖 AI</span>' : '';
     const scoreTag = `<span class="score-tag">${p.score || 0}分</span>`;
     let handHtml = (p.hand || []).map(n => renderCard(n, false)).join('');
     html += `
       <div class="${cls.join(' ')}">
         <div class="player-header">
-          <div class="player-name">${escapeHtml(p.name)}${offlineBadge}${scoreTag}<span class="seat">座位${id + 1}${label ? '·' + label : ''}</span></div>
+          <div class="player-name">${escapeHtml(p.name)}${botBadge}${offlineBadge}${scoreTag}<span class="seat">座位${id + 1}${label ? '·' + label : ''}</span></div>
           <div class="hp-display">${renderHearts(p.hp)}</div>
         </div>
         <div class="hand">${handHtml}</div>
@@ -1069,13 +1257,15 @@ function renderTopPlayers() {
 }
 
 function renderMe() {
+  if (isSpectator || gameState.is_spectator) return;  // 观战不显示自己区域
   const me = gameState.players[gameState.viewer_id];
   document.getElementById('myName').firstChild.textContent = me.name + ' ';
   document.getElementById('mySeat').textContent = '座位' + (gameState.viewer_id + 1) + ' · ' + (me.score || 0) + '分';
   document.getElementById('myHp').innerHTML = renderHearts(me.hp);
   const hand = document.getElementById('myHand');
-  const reveal = gameState.game_over;
-  if (reveal && me.hand) {
+  // 三种情况能看到自己手牌：游戏结束、已出局、或者后端返回了 hand 字段
+  const canSeeMyHand = gameState.game_over || me.eliminated || Array.isArray(me.hand);
+  if (canSeeMyHand && me.hand) {
     hand.innerHTML = me.hand.map(n => renderCard(n, false)).join('');
   } else {
     let html = '';
@@ -1314,31 +1504,41 @@ function showHelp() {
     <h3>🎯 胜利</h3>
     <p>① 一回合内喊光所有手牌即胜  ② 熬到最后一个存活</p>
     <h3>🃏 卡牌</h3>
-    <p>1×1, 2×2 … 8×8，共 36 张。开局抽 4 张到奥秘堆，剩 32 张。每人初始 5 张手牌。<strong>看不见自己的牌。</strong></p>
+    <p>1×1, 2×2 … 8×8，共 36 张。开局抽 4 张到奥秘堆，剩 32 张。每人初始 5 张手牌。<strong>看不见自己的牌（出局后才能看）。</strong></p>
     <h3>🔮 奥秘牌堆</h3>
     <p>开局独立的 4 张牌，所有人初始都看不到。用 4 号"窥视"可以查看其中一张未被揭示的，<strong>只有自己看见</strong>。每张奥秘牌最多被揭示一次。</p>
     <h3>🎤 喊牌</h3>
     <ul>
       <li>喊对 → 打出+触发法术，可继续喊（≥已喊号、同号可连喊）</li>
-      <li>喊错 → 扣 1 血（红龙反噬扣 2 血），回合结束</li>
+      <li>喊错 → 扣 1 血（红龙反噬随机扣 1-3 血），回合结束</li>
       <li>过牌 → 喊对至少 1 次后可主动结束回合</li>
       <li>⏰ 每回合首次决策 45 秒，后续每次决策 30 秒，超时扣 1 血</li>
     </ul>
     <h3>🪄 法术</h3>
     <p>1🐉 除自己每人随机-1~3  2👻 其他-1自己+1  3🌈 掷骰回1-3  4🦉 窥视奥秘<br>
     5⚡ 左右各-1  6🔥 左-1  7❄️ 右-1  8🧪 自己+1</p>
+    <h3>🤖 机器人</h3>
+    <p>大厅可加机器人凑人。机器人也看不见自己手牌（公平），靠概率推断喊牌。可在大厅随时加/踢。</p>
+    <h3>👁 观战</h3>
+    <p>大厅或满座时可"以观战身份加入"，可以看到所有玩家的手牌和奥秘堆，但无法操作。适合教学或主播。</p>
+    <h3>🚪 大厅踢人 / 投票退出</h3>
+    <p>大厅时点座位上的 ✕ 即可踢出该玩家或机器人。游戏中不能直接踢人，需点"投票返回大厅"，<strong>2 人同意</strong>即生效，本局作废。</p>
     <h3>🏆 赛制</h3>
     <p>开局前选总局数（1/3/5/7），每局赢家+1分，跑完总局数后宣布冠军。</p>
-    <h3>🚪 投票退出</h3>
-    <p>游戏中如果卡住，可点"投票返回大厅"，<strong>2 人同意</strong>即生效，本局作废，<strong>所有分数清零、赛制重置</strong>。</p>
     <p style="text-align:center; margin-top:14px;"><button class="modal-btn" onclick="closeModal()">明白了</button></p>
   </div>`, true);
 }
 
 function boot() {
   const params = new URLSearchParams(location.search);
+  const spectate = params.get('spectate');
   const seat = params.get('seat');
-  connect(seat !== null ? parseInt(seat, 10) : null);
+  if (spectate === '1' || spectate === 'true') {
+    isSpectator = true;
+    connect(null, true);
+  } else {
+    connect(seat !== null ? parseInt(seat, 10) : null, false);
+  }
 }
 boot();
 </script>

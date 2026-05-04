@@ -1,6 +1,9 @@
 """
-江湖魔法师 · 游戏核心逻辑 v2
-新增：奥秘牌堆（4号窥视的目标）、多局赛制、分数累计、返回大厅投票
+江湖魔法师 · 游戏核心逻辑 v3
+v3 新增：
+- 机器人玩家（is_bot 字段 + bot_decide AI 决策）
+- 死亡后玩家立即可见自己手牌
+- 观战支持（state_for 接受 -1 表示观战者，看到所有信息）
 """
 import random
 from typing import Optional
@@ -19,12 +22,12 @@ CARD_DEFS = {
 MAX_HP = 6
 INITIAL_HAND = 5
 MYSTERY_DECK_SIZE = 4
-FIRST_DECISION_SECONDS = 45  # 一回合第一次决策的超时
-SUBSEQUENT_DECISION_SECONDS = 30  # 后续决策的超时
+FIRST_DECISION_SECONDS = 45
+SUBSEQUENT_DECISION_SECONDS = 30
 
 
 class Player:
-    def __init__(self, pid: int, name: str):
+    def __init__(self, pid: int, name: str, is_bot: bool = False):
         self.id = pid
         self.name = name
         self.hp = MAX_HP
@@ -33,13 +36,14 @@ class Player:
         self.peeked_mysteries: dict[int, int] = {}
         self.connected = False
         self.score = 0
+        self.is_bot = is_bot
 
     def to_public(self):
         return {
             "id": self.id, "name": self.name, "hp": self.hp,
             "hand": self.hand, "hand_size": len(self.hand),
             "eliminated": self.eliminated, "connected": self.connected,
-            "score": self.score,
+            "score": self.score, "is_bot": self.is_bot,
         }
 
     def to_self(self):
@@ -47,9 +51,15 @@ class Player:
             "id": self.id, "name": self.name, "hp": self.hp,
             "hand_size": len(self.hand),
             "eliminated": self.eliminated, "connected": self.connected,
-            "score": self.score,
+            "score": self.score, "is_bot": self.is_bot,
             "peeked_mysteries": self.peeked_mysteries,
         }
+
+    def to_dead_self(self):
+        """已出局的玩家也能看到自己的手牌（虽然手牌已经不会再用了，但有助于复盘）"""
+        d = self.to_public()
+        d["peeked_mysteries"] = self.peeked_mysteries
+        return d
 
 
 class Game:
@@ -276,9 +286,136 @@ class Game:
             else:
                 self._log("平局，本局结束", "win")
 
-    def state_for(self, viewer_id: int) -> dict:
-        reveal_all = self.game_over
-        viewer = self.players[viewer_id] if 0 <= viewer_id < len(self.players) else None
+    # ============ AI 决策 ============
+    def bot_decide(self, pid: int) -> dict:
+        """
+        给指定 AI 玩家做一个决策，返回 {action, ...}
+        - action="call", n=N
+        - action="pass"
+        - action="confirm_dice"
+        - action="choose_mystery_peek", idx=I
+        - action="confirm_peek_mystery"
+        - action="none" 表示这个时机不该让 bot 行动
+        """
+        if self.game_over: return {"action": "none"}
+
+        # 处理 pending（如果是这个 bot 自己的 pending）
+        if self.pending and self.pending.get("player_id") == pid:
+            kind = self.pending["kind"]
+            if kind == "dice":
+                return {"action": "confirm_dice"}
+            if kind == "peek_mystery_show":
+                return {"action": "confirm_peek_mystery"}
+            if kind == "peek_mystery_choose":
+                avail = self.pending.get("available", [])
+                if avail:
+                    return {"action": "choose_mystery_peek", "idx": random.choice(avail)}
+                return {"action": "confirm_peek_mystery"}
+            return {"action": "none"}
+
+        if self.current_player != pid: return {"action": "none"}
+        if self.pending is not None: return {"action": "none"}
+
+        bot = self.players[pid]
+        if bot.eliminated: return {"action": "none"}
+
+        # 真正的喊牌决策
+        return self._bot_choose_call(bot)
+
+    def _bot_choose_call(self, bot: Player) -> dict:
+        """
+        AI 喊牌策略：
+        - bot 看不到自己手牌（公平），但能看到：所有人的牌、弃牌池、自己已揭示的奥秘牌
+        - 用贝叶斯式概率估计每个号码 n 在自己手里的张数
+        - 优先选预期手里有的、且能造成有利局面的号码
+
+        策略层级（从高到低）：
+        1. 如果手里只剩 1 张，且某号码估计概率最高，直接全力喊（求胜）
+        2. 如果当前已喊对过 (has_called_this_turn)，并且剩下号码概率都不高，倾向过牌
+        3. 否则在 [min_callable, 8] 范围里选概率最高的号码
+        """
+        n = len(self.players)
+        # ---- 估计自己手里每个号码的张数（期望值）----
+        # 总计每号码张数 = n（牌 n 共 n 张）
+        # 减去：所有人公开手牌中的、弃牌池中的、自己已揭示的奥秘堆中的
+        # 剩余牌池（含我手牌+其他暗牌堆+其他奥秘堆）的均匀概率分布
+        my_hand_size = len(bot.hand)
+        if my_hand_size == 0:
+            # 手牌空了应该已经游戏结束，这里防御性返回
+            return {"action": "pass"} if self.has_called_this_turn else {"action": "call", "n": self.min_callable}
+
+        unknown_counts = {k: k for k in range(1, 9)}
+        for p in self.players:
+            if p.id == bot.id:
+                continue  # 自己手牌看不到，所以未知
+            for c in p.hand:
+                unknown_counts[c] -= 1
+        for k, v in self.discard_counts.items():
+            unknown_counts[k] -= v
+        # 自己揭示过的奥秘牌也是已知的
+        for idx, c in bot.peeked_mysteries.items():
+            unknown_counts[c] -= 1
+
+        # 未知池总数
+        total_unknown = sum(unknown_counts.values())
+        # 未知池规模 = 我的手牌 + 主牌堆剩余 + 未被自己揭示的奥秘牌
+        unrevealed_mystery = sum(1 for i, r in enumerate(self.mystery_revealed) if not r and i not in bot.peeked_mysteries)
+        unknown_pool_size = my_hand_size + len(self.deck) + unrevealed_mystery
+
+        # 防御：如果不一致（极少见，比如 unknown_counts 算出负数），用 max(0, ...)
+        for k in unknown_counts:
+            if unknown_counts[k] < 0:
+                unknown_counts[k] = 0
+        if total_unknown <= 0 or unknown_pool_size <= 0:
+            # 信息匮乏，随机喊一个 ≥ min_callable
+            choices = [k for k in range(self.min_callable, 9)]
+            return {"action": "pass"} if (self.has_called_this_turn and random.random() < 0.5) else {"action": "call", "n": random.choice(choices)}
+
+        # 我手牌中号码 n 的期望张数 = unknown_counts[n] * (my_hand_size / unknown_pool_size)
+        ratio = my_hand_size / unknown_pool_size
+        expected_in_hand = {k: unknown_counts[k] * ratio for k in range(1, 9)}
+
+        # 候选号码 ≥ min_callable
+        candidates = [k for k in range(self.min_callable, 9)]
+        if not candidates:
+            return {"action": "pass"} if self.has_called_this_turn else {"action": "call", "n": 1}
+
+        # 取期望张数最高的
+        candidates.sort(key=lambda k: expected_in_hand[k], reverse=True)
+        best = candidates[0]
+        best_p = expected_in_hand[best]
+
+        # ---- 决定是喊还是过 ----
+        # 已喊对过至少一次：如果最佳候选概率太低，过牌保命
+        # 概率阈值：经验值 0.5（即期望手里至少有 0.5 张）
+        if self.has_called_this_turn:
+            # 受伤越重越倾向保守
+            hp_factor = 1.0 - (bot.hp / MAX_HP) * 0.3  # hp=6 时 factor=0.7，hp=1 时 factor=0.95
+            threshold = 0.5 * hp_factor
+            if best_p < threshold:
+                return {"action": "pass"}
+
+        # 手牌只有 1 张时倾向激进喊（有一定概率赢）
+        # 否则正常喊期望最高的
+        # 加一点随机性避免完全可预测：在前 2 个最佳里随机
+        if len(candidates) >= 2:
+            top2 = candidates[:2]
+            top2_p = [expected_in_hand[k] for k in top2]
+            # 如果第 2 名也不差（≥ 80% 第 1 名），偶尔选第 2
+            if top2_p[1] >= top2_p[0] * 0.8 and random.random() < 0.3:
+                return {"action": "call", "n": top2[1]}
+
+        return {"action": "call", "n": best}
+
+    def state_for(self, viewer_id: int, spectator: bool = False) -> dict:
+        """
+        viewer_id: -1 表示观战者（spectator=True 时无效，取所有信息）
+        spectator: 如果 True，不论 viewer_id 是什么，都按"观战者"返回（看到所有手牌+所有奥秘）
+        """
+        reveal_all = self.game_over or spectator
+        viewer = self.players[viewer_id] if (not spectator) and 0 <= viewer_id < len(self.players) else None
+
+        # 奥秘堆视图
         mystery_view = []
         for i in range(MYSTERY_DECK_SIZE):
             entry = {"idx": i, "revealed": self.mystery_revealed[i]}
@@ -286,8 +423,26 @@ class Game:
                 entry["card"] = self.mystery_deck[i]
             elif viewer and i in viewer.peeked_mysteries:
                 entry["card"] = viewer.peeked_mysteries[i]
-            entry["seen_by_me"] = bool(viewer and i in viewer.peeked_mysteries)
+            entry["seen_by_me"] = bool(viewer and i in viewer.peeked_mysteries) or spectator
             mystery_view.append(entry)
+
+        # 玩家视图
+        players_data = []
+        for p in self.players:
+            if spectator:
+                # 观战者看到所有手牌
+                d = p.to_public()
+                d["peeked_mysteries"] = p.peeked_mysteries
+                players_data.append(d)
+            elif p.id == viewer_id:
+                if reveal_all or p.eliminated:
+                    # 游戏结束、或者 viewer 已死亡 → 看见自己的牌
+                    players_data.append(p.to_dead_self())
+                else:
+                    players_data.append(p.to_self())
+            else:
+                players_data.append(p.to_public())
+
         return {
             "started": self.started,
             "player_count": self.player_count,
@@ -300,13 +455,15 @@ class Game:
             "game_over": self.game_over,
             "winner_id": self.winner_id,
             "log": self.log[-60:],
-            "viewer_id": viewer_id,
+            "viewer_id": viewer_id if not spectator else -1,
+            "is_spectator": spectator,
             "turn_deadline": self.turn_deadline,
-            "pending": (self.pending if self.pending and self.pending.get("player_id") == viewer_id else (
-                {"kind": self.pending["kind"], "player_id": self.pending["player_id"]} if self.pending else None
-            )),
-            "players": [
-                (p.to_self() if p.id == viewer_id and not reveal_all else p.to_public())
-                for p in self.players
-            ],
+            "pending": (
+                self.pending if (self.pending and not spectator and self.pending.get("player_id") == viewer_id)
+                else (
+                    {"kind": self.pending["kind"], "player_id": self.pending["player_id"]}
+                    if self.pending else None
+                )
+            ),
+            "players": players_data,
         }
