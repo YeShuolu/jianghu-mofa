@@ -1,50 +1,66 @@
 """
-江湖魔法师 · FastAPI 服务器
-单房间 + 匿名进入 + WebSocket 实时同步
+江湖魔法师 · FastAPI 服务器 v2
+新增：跨局玩家保留 + 多局赛制 + 超时定时器 + 改名 + 投票返回大厅
 """
 import asyncio
 import json
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.game import Game
+from game import Game, Player, TURN_TIMEOUT_SECONDS
 
-# ============= 房间状态（单房间，全局变量即可） =============
+
 class Room:
     def __init__(self):
         self.game: Optional[Game] = None
-        self.sockets: dict[int, WebSocket] = {}  # pid -> ws
-        self.seat_taken: list[bool] = [False] * 6  # 最多 6 个座位
-        self.player_count: int = 0  # 实际开局人数（开始时确定）
+        self.sockets: dict[int, WebSocket] = {}
+        # 跨局保留的玩家：seat -> Player（含分数、姓名）
+        self.players: dict[int, Player] = {}
         self.lock = asyncio.Lock()
+        # 赛制
+        self.total_rounds: int = 3
+        self.current_round: int = 0  # 已完成的局数
+        # 投票
+        self.exit_votes: set[int] = set()
+        self.exit_vote_active: bool = False
+        # 超时定时任务
+        self.timer_task: Optional[asyncio.Task] = None
 
     def free_seats(self) -> list[int]:
-        return [i for i, taken in enumerate(self.seat_taken) if not taken]
+        return [i for i in range(6) if i not in self.players]
 
     def occupied(self) -> int:
-        return sum(self.seat_taken)
+        return len(self.players)
+
+    def in_game(self) -> bool:
+        return self.game is not None and self.game.started and not self.game.game_over
+
+    def reset_all(self):
+        self.game = None
+        self.players.clear()
+        self.exit_votes.clear()
+        self.exit_vote_active = False
+        self.current_round = 0
 
 
 room = Room()
 
 
-# ============= FastAPI 应用 =============
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🎮 江湖魔法师服务器启动")
     yield
     print("服务器关闭")
+    if room.timer_task: room.timer_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-# ============= 静态文件 =============
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 
 
@@ -53,47 +69,32 @@ async def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-# 挂载 static 路径供未来扩展
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-# ============= 房间状态查询（HTTP） =============
 @app.get("/api/room")
 async def room_status():
-    return {
-        "occupied": room.occupied(),
-        "max_seats": 6,
-        "started": room.game.started if room.game else False,
-        "free_seats": room.free_seats(),
-    }
+    return {"occupied": room.occupied(), "in_game": room.in_game()}
 
 
 @app.post("/api/reset")
 async def reset_room():
-    """重置房间（管理员用，无密码 — 仅适合朋友局）"""
+    """彻底重置（管理员）"""
     async with room.lock:
-        room.game = None
-        room.seat_taken = [False] * 6
-        room.player_count = 0
-        # 主动断开所有 ws
+        if room.timer_task:
+            room.timer_task.cancel()
+            room.timer_task = None
         for ws in list(room.sockets.values()):
-            try:
-                await ws.close()
-            except:
-                pass
+            try: await ws.close()
+            except: pass
         room.sockets.clear()
+        room.reset_all()
     return {"ok": True}
 
 
 # ============= WebSocket =============
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, seat: Optional[int] = Query(None)):
-    """
-    座位号约定：客户端通过 ?seat=N 指定要坐哪个位置；
-      - 如果 seat 已被占用 → 拒绝
-      - 如果 seat 为 None → 自动分配第一个空位
-      - 如果游戏已开始 → 仅允许已分配座位的玩家重连
-    """
     await ws.accept()
     pid: Optional[int] = None
     try:
@@ -101,41 +102,42 @@ async def websocket_endpoint(ws: WebSocket, seat: Optional[int] = Query(None)):
             if seat is not None:
                 if not (0 <= seat < 6):
                     await ws.send_json({"type": "error", "msg": "座位号无效"})
-                    await ws.close()
-                    return
-                if room.seat_taken[seat] and seat in room.sockets:
-                    # 已有人在该座位且 socket 还在 → 拒绝重复占座
-                    await ws.send_json({"type": "error", "msg": f"座位 {seat+1} 已被占用"})
-                    await ws.close()
-                    return
-                pid = seat
+                    await ws.close(); return
+                if seat in room.players:
+                    # 已有人占该座 → 视为重连（关闭旧 ws 并接管）
+                    if seat in room.sockets:
+                        old = room.sockets[seat]
+                        try: await old.close()
+                        except: pass
+                    pid = seat
+                else:
+                    if room.in_game():
+                        await ws.send_json({"type": "error", "msg": "游戏中无法加入新座位"})
+                        await ws.close(); return
+                    # 占新座
+                    pid = seat
+                    name = f"玩家{chr(ord('A') + pid)}"
+                    room.players[pid] = Player(pid, name)
             else:
-                if room.game and room.game.started:
-                    await ws.send_json({"type": "error", "msg": "游戏已开始，无法加入新玩家"})
-                    await ws.close()
-                    return
+                if room.in_game():
+                    await ws.send_json({"type": "error", "msg": "游戏中无法加入"})
+                    await ws.close(); return
                 free = room.free_seats()
                 if not free:
                     await ws.send_json({"type": "error", "msg": "房间已满"})
-                    await ws.close()
-                    return
+                    await ws.close(); return
                 pid = free[0]
+                room.players[pid] = Player(pid, f"玩家{chr(ord('A') + pid)}")
 
-            # 占座
-            room.seat_taken[pid] = True
-            # 关闭旧的 socket
-            old = room.sockets.get(pid)
-            if old:
-                try: await old.close()
-                except: pass
             room.sockets[pid] = ws
-            if room.game:
+            room.players[pid].connected = True
+            # 同步到 game 对象
+            if room.game and pid < len(room.game.players):
                 room.game.players[pid].connected = True
 
         await ws.send_json({"type": "joined", "pid": pid})
-        await broadcast_lobby_or_state()
+        await broadcast_state_or_lobby()
 
-        # 主消息循环
         while True:
             raw = await ws.receive_text()
             try:
@@ -152,79 +154,145 @@ async def websocket_endpoint(ws: WebSocket, seat: Optional[int] = Query(None)):
         async with room.lock:
             if pid is not None and room.sockets.get(pid) is ws:
                 del room.sockets[pid]
-                if room.game:
+                # 不删除 room.players[pid]：跨局保留分数与名字，仅断开 socket
+                if pid in room.players:
+                    room.players[pid].connected = False
+                if room.game and pid < len(room.game.players):
                     room.game.players[pid].connected = False
-                else:
-                    # 还没开始游戏 → 释放座位
-                    room.seat_taken[pid] = False
-        await broadcast_lobby_or_state()
+                # 如果还没开始游戏，且玩家走了，从座位移除（防止座位被占住没人）
+                if not room.in_game() and not room.game:
+                    if pid in room.players:
+                        del room.players[pid]
+                # 投票期间断线视为放弃（不计票）
+                room.exit_votes.discard(pid)
+        await broadcast_state_or_lobby()
 
 
-# ============= 消息分发 =============
 async def handle_message(pid: int, msg: dict, ws: WebSocket):
     t = msg.get("type")
 
     if t == "set_name":
-        # 改名（可选；前端用 prompt 让用户改）
         name = (msg.get("name") or "").strip()[:12]
-        if not name:
-            return
+        if not name: return
         async with room.lock:
-            if room.game:
+            if pid in room.players:
+                room.players[pid].name = name
+            if room.game and pid < len(room.game.players):
                 room.game.players[pid].name = name
-        await broadcast_lobby_or_state()
+        await broadcast_state_or_lobby()
+        return
+
+    if t == "set_rounds":
+        n = msg.get("n")
+        if isinstance(n, int) and 1 <= n <= 9:
+            async with room.lock:
+                if not room.in_game():
+                    room.total_rounds = n
+            await broadcast_state_or_lobby()
         return
 
     if t == "start_game":
-        # 任何已入座的玩家都可发起开始（朋友局，简单）
         async with room.lock:
+            if room.in_game():
+                await ws.send_json({"type": "error", "msg": "本局尚未结束"})
+                return
             occ = room.occupied()
             if occ < 3:
                 await ws.send_json({"type": "error", "msg": f"至少需要 3 人才能开始（当前 {occ} 人）"})
                 return
-            if room.game and room.game.started and not room.game.game_over:
-                await ws.send_json({"type": "error", "msg": "本局尚未结束"})
-                return
-            # 按已占座位的顺序压缩为连续 pid（保留座位号即玩家身份）
-            # 简化：直接以 6 个座位中已占用的为玩家，但 game 内 pid 与 seat 保持一致
-            # 因此 game.player_count = max(occupied seat index)+1 但内部 player[i].eliminated 不该有效... 
-            # 改为 game 接受 player_count 等于占用座位数 — 但要求座位是 0..N-1 连续！
-            # 朋友局简化：要求座位连续。如果不连续，提示。
-            taken_idx = [i for i, t in enumerate(room.seat_taken) if t]
+            taken_idx = sorted(room.players.keys())
             if taken_idx != list(range(len(taken_idx))):
-                await ws.send_json({"type": "error", "msg": f"座位不连续（已占：{[i+1 for i in taken_idx]}），请确保从 1 号位起依次落座"})
+                await ws.send_json({"type": "error", "msg": f"座位不连续，请确保从 1 号位起依次落座"})
                 return
-            n = len(taken_idx)
-            # 保留旧名字
-            old_names = {}
-            if room.game:
-                for p in room.game.players:
-                    old_names[p.id] = p.name
-            room.game = Game(player_count=n)
-            for p in room.game.players:
-                if p.id in old_names:
-                    p.name = old_names[p.id]
-                p.connected = (p.id in room.sockets)
-            room.player_count = n
-            room.game.start()
+            # 第一局开始：清零分数和已完成局数（如果之前是新房间）
+            if room.current_round == 0:
+                for p in room.players.values():
+                    p.score = 0
+            # 开局
+            game_players = [room.players[i] for i in taken_idx]
+            room.game = Game(game_players)
+            # 起始玩家：每局轮换（按已完成局数）
+            first = room.current_round % len(game_players)
+            room.game.start(first_player=first)
+            _start_turn_timer()
         await broadcast_state()
         return
 
-    # 以下需要游戏开始
-    if not room.game or not room.game.started:
-        await ws.send_json({"type": "error", "msg": "游戏未开始"})
+    if t == "next_round":
+        # 上一局结束后，准备下一局
+        async with room.lock:
+            if not room.game or not room.game.game_over:
+                await ws.send_json({"type": "error", "msg": "上一局尚未结束"})
+                return
+            # 如果还没到总局数，开下一局
+            if room.current_round >= room.total_rounds:
+                await ws.send_json({"type": "error", "msg": "整轮已结束"})
+                return
+            # 重新使用当前玩家列表
+            taken_idx = sorted(room.players.keys())
+            if len(taken_idx) < 3:
+                await ws.send_json({"type": "error", "msg": "玩家不足 3 人，无法开始下一局"})
+                return
+            game_players = [room.players[i] for i in taken_idx]
+            room.game = Game(game_players)
+            first = room.current_round % len(game_players)
+            room.game.start(first_player=first)
+            _start_turn_timer()
+        await broadcast_state()
+        return
+
+    if t == "reset_match":
+        # 重置整个赛制（清零分数、回到大厅状态）
+        async with room.lock:
+            for p in room.players.values():
+                p.score = 0
+            room.current_round = 0
+            room.game = None
+            room.exit_votes.clear()
+            room.exit_vote_active = False
+            _stop_turn_timer()
+        await broadcast_state_or_lobby()
+        return
+
+    if t == "vote_exit":
+        # 发起 / 响应"返回大厅"投票
+        async with room.lock:
+            if not room.in_game():
+                await ws.send_json({"type": "error", "msg": "无需投票（不在游戏中）"})
+                return
+            yes = bool(msg.get("yes", True))
+            if yes:
+                room.exit_votes.add(pid)
+                room.exit_vote_active = True
+            else:
+                room.exit_votes.discard(pid)
+            # 达到 2 人 → 通过
+            if len(room.exit_votes) >= 2:
+                # 中途返回大厅 = 本局作废，分数不变，已完成局数也不变
+                room.game._log("🚪 投票通过：本局中途结束，返回大厅", "event")
+                room.game.game_over = True
+                room.game.winner_id = None  # 没有胜者
+                room.exit_votes.clear()
+                room.exit_vote_active = False
+                _stop_turn_timer()
+                # 注意：不增加 current_round（这局作废）
+        await broadcast_state_or_lobby()
+        return
+
+    # 以下需要游戏中
+    if not room.in_game():
+        await ws.send_json({"type": "error", "msg": "游戏未开始或已结束"})
         return
 
     if t == "call":
         n = msg.get("n")
-        if not isinstance(n, int):
-            return
+        if not isinstance(n, int): return
         async with room.lock:
             res = room.game.call_number(pid, n)
         if not res.get("ok"):
             await ws.send_json({"type": "error", "msg": _reason_to_text(res.get("reason"))})
             return
-        await broadcast_state()
+        await _on_action_done()
         return
 
     if t == "pass":
@@ -233,32 +301,31 @@ async def handle_message(pid: int, msg: dict, ws: WebSocket):
         if not res.get("ok"):
             await ws.send_json({"type": "error", "msg": _reason_to_text(res.get("reason"))})
             return
-        await broadcast_state()
+        await _on_action_done()
         return
 
     if t == "confirm_dice":
         async with room.lock:
             room.game.confirm_dice(pid)
-        await broadcast_state()
+        await _on_action_done()
         return
 
-    if t == "choose_peek":
+    if t == "choose_mystery_peek":
         idx = msg.get("idx")
-        if not isinstance(idx, int):
-            return
+        if not isinstance(idx, int): return
         async with room.lock:
-            room.game.choose_peek(pid, idx)
-        await broadcast_state()
+            room.game.choose_mystery_peek(pid, idx)
+        await _on_action_done()
         return
 
-    if t == "confirm_peek":
+    if t == "confirm_peek_mystery":
         async with room.lock:
-            room.game.confirm_peek(pid)
-        await broadcast_state()
+            room.game.confirm_peek_mystery(pid)
+        await _on_action_done()
         return
 
 
-def _reason_to_text(reason: str) -> str:
+def _reason_to_text(reason):
     return {
         "game_over": "游戏已结束",
         "pending_action": "请先完成当前动作",
@@ -269,49 +336,124 @@ def _reason_to_text(reason: str) -> str:
     }.get(reason or "", reason or "未知错误")
 
 
+# ============= 超时定时器 =============
+def _stop_turn_timer():
+    if room.timer_task:
+        room.timer_task.cancel()
+        room.timer_task = None
+    if room.game:
+        room.game.turn_deadline = None
+
+
+def _start_turn_timer():
+    """启动当前回合（或当前 pending）的 30 秒超时"""
+    _stop_turn_timer()
+    if not room.game or room.game.game_over:
+        return
+    deadline = time.time() + TURN_TIMEOUT_SECONDS
+    room.game.turn_deadline = deadline
+
+    async def _wait():
+        try:
+            await asyncio.sleep(TURN_TIMEOUT_SECONDS)
+            async with room.lock:
+                # 二次校验：仍然是这个超时窗口（没有被提前结束）
+                if not room.game or room.game.game_over: return
+                if room.game.turn_deadline != deadline: return
+                # 触发超时
+                if room.game.pending is not None:
+                    # pending 状态超时：直接清掉 pending 并结束回合
+                    p = room.game.players[room.game.pending.get("player_id", 0)]
+                    room.game._log(f"⏰ {p.name} 决策超时，扣 1 血", "damage")
+                    room.game._damage(p, 1)
+                    room.game.pending = None
+                    room.game._end_turn()
+                else:
+                    room.game.timeout_current()
+                room.game.turn_deadline = None
+            # 处理后续（包括下一回合启动新计时器）
+            await _on_action_done()
+        except asyncio.CancelledError:
+            pass
+
+    room.timer_task = asyncio.create_task(_wait())
+
+
+async def _on_action_done():
+    """每次有效操作后调用：广播状态 + 重启计时器"""
+    if room.game:
+        if room.game.game_over:
+            _stop_turn_timer()
+            # 如果不是投票退出 → 算一局完成 + 加分
+            if room.game.winner_id is not None:
+                room.current_round += 1
+                winner = room.game.players[room.game.winner_id]
+                winner.score += 1
+            await broadcast_state()
+        else:
+            _start_turn_timer()
+            await broadcast_state()
+    else:
+        await broadcast_lobby()
+
+
 # ============= 广播 =============
 async def broadcast_state():
-    """游戏中：给每个玩家发自己视角的 state"""
-    if not room.game:
-        return
+    if not room.game: return
+    extra = _match_meta()
     for pid, ws in list(room.sockets.items()):
         try:
-            payload = {"type": "state", "data": room.game.state_for(pid)}
-            await ws.send_json(payload)
-        except Exception:
-            pass
+            data = room.game.state_for(pid)
+            data.update(extra)
+            await ws.send_json({"type": "state", "data": data})
+        except: pass
 
 
 async def broadcast_lobby():
-    """大厅状态（未开始或被重置）"""
-    lobby = {
+    seats = []
+    for i in range(6):
+        if i in room.players:
+            p = room.players[i]
+            seats.append({
+                "seat": i, "taken": True, "online": (i in room.sockets),
+                "name": p.name, "score": p.score
+            })
+        else:
+            seats.append({"seat": i, "taken": False, "online": False, "name": None, "score": 0})
+    base = {
         "type": "lobby",
         "data": {
             "occupied": room.occupied(),
-            "seats": [
-                {"seat": i, "taken": room.seat_taken[i], "online": i in room.sockets,
-                 "name": (room.game.players[i].name if room.game and i < len(room.game.players) else None)}
-                for i in range(6)
-            ],
-            "started": room.game.started if room.game else False,
-            "game_over": room.game.game_over if room.game else False,
+            "seats": seats,
+            "in_game": room.in_game(),
+            "total_rounds": room.total_rounds,
+            "current_round": room.current_round,
+            "match_done": (room.current_round >= room.total_rounds and room.current_round > 0),
         }
     }
     for pid, ws in list(room.sockets.items()):
         try:
-            payload = dict(lobby)
-            payload["data"] = dict(lobby["data"])
+            payload = {"type": "lobby", "data": dict(base["data"])}
             payload["data"]["you"] = pid
             await ws.send_json(payload)
-        except Exception:
-            pass
+        except: pass
 
 
-async def broadcast_lobby_or_state():
-    if room.game and room.game.started and not room.game.game_over:
+async def broadcast_state_or_lobby():
+    if room.in_game():
         await broadcast_state()
     else:
         await broadcast_lobby()
+
+
+def _match_meta():
+    return {
+        "total_rounds": room.total_rounds,
+        "current_round": room.current_round,
+        "exit_votes": list(room.exit_votes),
+        "exit_vote_active": room.exit_vote_active,
+        "match_done": (room.current_round >= room.total_rounds and room.current_round > 0),
+    }
 
 
 if __name__ == "__main__":
