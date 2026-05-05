@@ -17,11 +17,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.game import Game, Player, FIRST_DECISION_SECONDS, SUBSEQUENT_DECISION_SECONDS
+from game import Game, Player, FIRST_DECISION_SECONDS, SUBSEQUENT_DECISION_SECONDS
 
 EXIT_VOTE_TIMEOUT = 30  # 投票退出的超时秒数
 BOT_THINK_MIN = 0.8     # 机器人最少思考时间
 BOT_THINK_MAX = 1.8     # 机器人最多思考时间
+BOT_WATCHDOG_SECONDS = 10  # 机器人行动 watchdog：超过这个时间还没动 → 强制处理
 
 
 class Room:
@@ -331,6 +332,7 @@ async def handle_message(pid: int, msg: dict, ws: WebSocket):
             room.game = Game(game_players)
             first = room.current_round % len(game_players)
             room.game.start(first_player=first)
+            room._scored_this_round = False
             _start_turn_timer()
         await broadcast_state()
         await _maybe_trigger_bot()
@@ -352,6 +354,7 @@ async def handle_message(pid: int, msg: dict, ws: WebSocket):
             room.game = Game(game_players)
             first = room.current_round % len(game_players)
             room.game.start(first_player=first)
+            room._scored_this_round = False
             _start_turn_timer()
         await broadcast_state()
         await _maybe_trigger_bot()
@@ -403,15 +406,28 @@ async def handle_message(pid: int, msg: dict, ws: WebSocket):
                     _stop_exit_vote_timer()
                     room.exit_vote_active = False
                     room.exit_vote_deadline = None
-            if len(room.exit_votes) >= 2:
+            # 通过条件：2 人同意，或者"全场只有 1 个真人"且这个人投了
+            human_pids = [p.id for p in room.players.values() if not p.is_bot]
+            single_human = (len(human_pids) <= 1)
+            should_pass = (
+                len(room.exit_votes) >= 2
+                or (single_human and len(room.exit_votes) >= 1)
+            )
+            if should_pass:
                 _stop_exit_vote_timer()
-                room.game._log("🚪 投票通过：本局中止，赛制重置，所有分数清零", "event")
+                if single_human and len(room.exit_votes) >= 1:
+                    room.game._log("🚪 单真人退出：本局中止，赛制重置，所有分数清零", "event")
+                else:
+                    room.game._log("🚪 投票通过：本局中止，赛制重置，所有分数清零", "event")
                 room.game.game_over = True
                 room.game.winner_id = None
                 room.exit_votes.clear()
                 room.exit_vote_active = False
                 room.exit_vote_deadline = None
                 _stop_turn_timer()
+                # 取消还在跑的 bot 任务，避免它继续行动
+                if room.bot_task and not room.bot_task.done():
+                    room.bot_task.cancel()
                 for p in room.players.values():
                     p.score = 0
                 room.current_round = 0
@@ -573,10 +589,11 @@ async def _on_action_done():
     if room.game:
         if room.game.game_over:
             _stop_turn_timer()
-            if room.game.winner_id is not None:
+            if room.game.winner_id is not None and not getattr(room, "_scored_this_round", False):
                 room.current_round += 1
                 winner = room.game.players[room.game.winner_id]
                 winner.score += 1
+                room._scored_this_round = True
             await broadcast_state()
         else:
             _start_turn_timer()
@@ -607,44 +624,151 @@ async def _maybe_trigger_bot():
 
 
 async def _run_bot(bot_pid: int):
-    """机器人行动循环：连续做决策直到不该自己动 / pending 不是自己"""
+    """机器人行动循环：连续行动直到回合结束 / 不再是自己 / pending 切给别人。
+
+    关键设计：bot 喊对一张牌后还是自己的回合（要继续喊或过牌），
+    所以这里用 while 循环，每次循环执行一次决策；
+    单次决策用 watchdog 保护（避免单步卡死）。
+
+    每次决策前后都释放锁、广播、休眠，让真人玩家能看到中间状态。
+    """
     try:
-        # 思考延迟（让玩家看清楚发生了什么）
-        delay = random.uniform(BOT_THINK_MIN, BOT_THINK_MAX)
-        await asyncio.sleep(delay)
-
-        async with room.lock:
-            if not room.game or room.game.game_over:
+        while True:
+            # 单次决策用 watchdog 包住
+            try:
+                cont = await asyncio.wait_for(
+                    _bot_one_step(bot_pid), timeout=BOT_WATCHDOG_SECONDS
+                )
+            except asyncio.TimeoutError:
+                print(f"⚠️  Bot {bot_pid} watchdog 触发（{BOT_WATCHDOG_SECONDS}s 内未完成单步），强制处理")
+                await _bot_force_action(bot_pid)
+                # 强制处理后退出循环（_bot_force_action 内部已经触发 _on_action_done）
                 return
-            # 重新校验当前 actor 仍是这个 bot
-            actor_pid = room.game.current_player
-            if room.game.pending is not None:
-                actor_pid = room.game.pending.get("player_id", actor_pid)
-            if actor_pid != bot_pid:
+            if not cont:
+                # 不再轮到这个 bot 了（或游戏结束 / 切到 pending 给别人）
                 return
-            if not room.game.players[bot_pid].is_bot:
-                return
-
-            decision = room.game.bot_decide(bot_pid)
-            act = decision.get("action")
-            if act == "call":
-                room.game.call_number(bot_pid, decision["n"])
-            elif act == "pass":
-                room.game.pass_turn(bot_pid)
-            elif act == "confirm_dice":
-                room.game.confirm_dice(bot_pid)
-            elif act == "choose_mystery_peek":
-                room.game.choose_mystery_peek(bot_pid, decision["idx"])
-            elif act == "confirm_peek_mystery":
-                room.game.confirm_peek_mystery(bot_pid)
-            else:
-                return
-        # 释放锁后调用 _on_action_done（它会再次广播 + 触发下一个 bot）
-        await _on_action_done()
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        print(f"Bot {bot_pid} error: {e}")
+        print(f"Bot {bot_pid} loop error: {e}")
+        await _bot_force_action(bot_pid)
+
+
+async def _bot_one_step(bot_pid: int) -> bool:
+    """执行 bot 的一次行动。返回 True 表示还该继续（同一 bot 还要再动），
+    False 表示该退出循环（轮到别人 / 游戏结束 / 切到非 bot 的 pending）。
+
+    在锁外做思考延迟，让玩家看清前一个状态。
+    在锁内做决策 + 提交，避免与其他消息竞争。
+    锁外调用 _on_action_done（广播状态）。
+    """
+    # 思考延迟（锁外）
+    delay = random.uniform(BOT_THINK_MIN, BOT_THINK_MAX)
+    await asyncio.sleep(delay)
+
+    # 决策 + 提交（锁内）
+    async with room.lock:
+        if not room.game or room.game.game_over:
+            return False
+        # 校验当前 actor 仍是这个 bot
+        actor_pid = room.game.current_player
+        if room.game.pending is not None:
+            actor_pid = room.game.pending.get("player_id", actor_pid)
+        if actor_pid != bot_pid:
+            return False
+        if not room.game.players[bot_pid].is_bot:
+            return False
+
+        decision = room.game.bot_decide(bot_pid)
+        act = decision.get("action")
+        if act == "call":
+            room.game.call_number(bot_pid, decision["n"])
+        elif act == "pass":
+            room.game.pass_turn(bot_pid)
+        elif act == "confirm_dice":
+            room.game.confirm_dice(bot_pid)
+        elif act == "choose_mystery_peek":
+            room.game.choose_mystery_peek(bot_pid, decision["idx"])
+        elif act == "confirm_peek_mystery":
+            room.game.confirm_peek_mystery(bot_pid)
+        else:
+            # action == "none" 或未知：退出循环
+            return False
+
+        # 决策已提交，先记下"是否还轮到自己"
+        if room.game.game_over:
+            still_my_turn = False
+        else:
+            new_actor = room.game.current_player
+            if room.game.pending is not None:
+                new_actor = room.game.pending.get("player_id", new_actor)
+            still_my_turn = (
+                new_actor == bot_pid
+                and 0 <= new_actor < len(room.game.players)
+                and room.game.players[new_actor].is_bot
+            )
+
+    # 锁外：广播状态 + 重启 turn timer（如果回合切到真人就启计时）
+    await _broadcast_and_refresh_timer()
+
+    return still_my_turn
+
+
+async def _broadcast_and_refresh_timer():
+    """bot 中间步骤后调用：广播 + 计时器，但不递归触发 bot
+    （递归在 _run_bot 的 while 循环里已经做了）。"""
+    if room.game:
+        if room.game.game_over:
+            _stop_turn_timer()
+            if room.game.winner_id is not None:
+                # 第一次到 game_over 时记分（防止重复加分）
+                if not getattr(room, "_scored_this_round", False):
+                    room.current_round += 1
+                    winner = room.game.players[room.game.winner_id]
+                    winner.score += 1
+                    room._scored_this_round = True
+            await broadcast_state()
+        else:
+            _start_turn_timer()
+            await broadcast_state()
+    else:
+        await broadcast_lobby()
+
+
+async def _bot_force_action(bot_pid: int):
+    """Watchdog 触发后的强制处理：尽量让游戏继续推进"""
+    try:
+        async with room.lock:
+            if not room.game or room.game.game_over:
+                return
+            g = room.game
+            # 处理 pending（直接确认）
+            if g.pending and g.pending.get("player_id") == bot_pid:
+                kind = g.pending["kind"]
+                if kind == "dice":
+                    g.confirm_dice(bot_pid)
+                elif kind == "peek_mystery_show":
+                    g.confirm_peek_mystery(bot_pid)
+                elif kind == "peek_mystery_choose":
+                    avail = g.pending.get("available", [])
+                    if avail:
+                        g.choose_mystery_peek(bot_pid, avail[0])
+                    else:
+                        # 没有可选项，清掉 pending（理论上不应发生）
+                        g.pending = None
+                g._log(f"⚠️ {g.players[bot_pid].name} 行动异常，已自动处理", "event")
+            elif g.current_player == bot_pid and not g.players[bot_pid].eliminated:
+                # 没在 pending 里 → 在喊牌阶段
+                if g.has_called_this_turn:
+                    g.pass_turn(bot_pid)
+                    g._log(f"⚠️ {g.players[bot_pid].name} 行动异常，自动过牌", "event")
+                else:
+                    # 必须喊一次，喊 min_callable（很可能喊错扣血，但能让游戏继续）
+                    g.call_number(bot_pid, g.min_callable)
+                    g._log(f"⚠️ {g.players[bot_pid].name} 行动异常，自动喊出 {g.min_callable} 号", "event")
+        await _on_action_done()
+    except Exception as e:
+        print(f"Bot force action error: {e}")
 
 
 # ============= 广播 =============

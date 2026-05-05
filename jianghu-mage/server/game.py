@@ -386,22 +386,37 @@ class Game:
         best_p = expected_in_hand[best]
 
         # ---- 决定是喊还是过 ----
-        # 已喊对过至少一次：如果最佳候选概率太低，过牌保命
-        # 概率阈值：经验值 0.5（即期望手里至少有 0.5 张）
+        # 关键洞察：闪击胜利只能通过"一回合内连喊到 0 张"实现。
+        # 一旦回合结束，手牌会被补回 5 张。所以喊对后应该尽量继续追，
+        # 而不是过牌（过牌就放弃了闪击机会）。
+        #
+        # 策略：
+        # - 手牌数 = my_hand_size
+        # - 已经喊对过 has_called_this_turn → 说明已经成功打出过至少一张
+        # - 如果当前手牌还剩 K 张，再连对 K 张就赢了
+        # - K 越小，越值得激进追下去
         if self.has_called_this_turn:
-            # 受伤越重越倾向保守
-            hp_factor = 1.0 - (bot.hp / MAX_HP) * 0.3  # hp=6 时 factor=0.7，hp=1 时 factor=0.95
-            threshold = 0.5 * hp_factor
-            if best_p < threshold:
-                return {"action": "pass"}
+            # 已喊对过 ≥1 次，正在追闪击
+            if my_hand_size <= 1:
+                # 还差 1 张就闪击胜利！必须继续喊（除非真的找不到候选）
+                # 此时哪怕 best_p=0 也搏一把（喊错最多扣 1 血，喊对就赢）
+                pass  # 不过牌，往下走 → 喊
+            elif my_hand_size <= 3:
+                # 离闪击胜利很近，激进追
+                # 阈值降到 0.2（即期望手里至少 0.2 张就喊）
+                if best_p < 0.2:
+                    return {"action": "pass"}
+            else:
+                # 手牌还多，闪击希望不大，回到保守阈值
+                hp_factor = 1.0 - (bot.hp / MAX_HP) * 0.3  # hp=6 时 0.7，hp=1 时 0.95
+                threshold = 0.5 * hp_factor
+                if best_p < threshold:
+                    return {"action": "pass"}
 
-        # 手牌只有 1 张时倾向激进喊（有一定概率赢）
-        # 否则正常喊期望最高的
-        # 加一点随机性避免完全可预测：在前 2 个最佳里随机
-        if len(candidates) >= 2:
+        # 选号：手牌少时不加随机性（避免错过闪击）
+        if my_hand_size > 3 and len(candidates) >= 2:
             top2 = candidates[:2]
             top2_p = [expected_in_hand[k] for k in top2]
-            # 如果第 2 名也不差（≥ 80% 第 1 名），偶尔选第 2
             if top2_p[1] >= top2_p[0] * 0.8 and random.random() < 0.3:
                 return {"action": "call", "n": top2[1]}
 

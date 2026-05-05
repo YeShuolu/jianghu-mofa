@@ -588,7 +588,6 @@
     <div class="lobby-actions">
       <button class="lobby-btn" id="startBtn" onclick="sendStart()" disabled>开始游戏</button>
       <button class="lobby-btn secondary" id="addBotBtn" onclick="addBot()">+ 添加机器人</button>
-      <button class="lobby-btn secondary" id="kickBotBtn" onclick="kickBot()" disabled>− 踢出机器人</button>
       <button class="lobby-btn secondary" id="resetMatchBtn" onclick="resetMatch()" style="display:none">清零分数</button>
     </div>
     <div class="invite-box">
@@ -961,21 +960,16 @@ function renderLobby() {
 
   const startBtn = document.getElementById('startBtn');
   const addBotBtn = document.getElementById('addBotBtn');
-  const kickBotBtn = document.getElementById('kickBotBtn');
 
-  // 观战者：禁用所有操作按钮（开始、加机器人、踢机器人、改名、设置局数）
+  // 观战者：禁用所有操作按钮
   if (isSpectator) {
     startBtn.disabled = true;
     startBtn.textContent = '观战中（无法操作）';
     addBotBtn.disabled = true;
-    kickBotBtn.disabled = true;
     document.getElementById('roundsSelect').disabled = true;
   } else {
     document.getElementById('roundsSelect').disabled = false;
     addBotBtn.disabled = (lobbyData.occupied >= 6);
-    const botCount = seats.filter(s => s.taken && s.is_bot).length;
-    kickBotBtn.disabled = (botCount === 0);
-    kickBotBtn.textContent = botCount > 0 ? `− 踢出机器人（${botCount}）` : '− 踢出机器人';
 
     startBtn.disabled = (lobbyData.occupied < 3);
     if (lobbyData.match_done) {
@@ -1056,13 +1050,10 @@ function addBot() {
   SFX.click();
   send({ type: 'add_bot' });
 }
-function kickBot() {
-  SFX.click();
-  send({ type: 'kick_bot' });
-}
 function kickPlayer(seat, isBot, name) {
   SFX.click();
   if (isBot) {
+    // 机器人不需要确认，直接踢
     send({ type: 'kick_bot', seat });
     return;
   }
