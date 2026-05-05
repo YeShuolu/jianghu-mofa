@@ -645,13 +645,35 @@ async def _run_bot(bot_pid: int):
                 # 强制处理后退出循环（_bot_force_action 内部已经触发 _on_action_done）
                 return
             if not cont:
-                # 不再轮到这个 bot 了（或游戏结束 / 切到 pending 给别人）
+                # 不再轮到这个 bot 了 → 检查是否需要把回合传给下一个 bot
+                await _chain_to_next_bot_if_needed(bot_pid)
                 return
     except asyncio.CancelledError:
         pass
     except Exception as e:
         print(f"Bot {bot_pid} loop error: {e}")
         await _bot_force_action(bot_pid)
+
+
+async def _chain_to_next_bot_if_needed(prev_bot_pid: int):
+    """如果当前 actor 是另一个 bot（不是 prev_bot_pid 自己），启动新 bot_task。
+    用 asyncio.create_task 而不是 await，让当前 _run_bot 干净退出后再切换。
+    """
+    async with room.lock:
+        if not room.game or room.game.game_over:
+            return
+        next_actor = room.game.current_player
+        if room.game.pending is not None:
+            next_actor = room.game.pending.get("player_id", next_actor)
+        if not (0 <= next_actor < len(room.game.players)):
+            return
+        if not room.game.players[next_actor].is_bot:
+            return  # 真人玩家，由真人通过 ws 发消息触发，不用我们管
+        if next_actor == prev_bot_pid:
+            return  # 防御性：理论上不该发生（cont 已经判过了）
+
+    # 启动下一个 bot 的任务（不 await，让当前 _run_bot 干净退出）
+    room.bot_task = asyncio.create_task(_run_bot(next_actor))
 
 
 async def _bot_one_step(bot_pid: int) -> bool:
